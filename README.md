@@ -45,9 +45,9 @@ A demonstração usa apenas dados fictícios. Nenhuma informação financeira re
 
 ## Time
 
-- Thiago Gama
+- Thiago Gama Santoro Moreira           
 - Rafael Fassina
-- Lucas
+- Lucas Daniel Percebo Teixeira
 
 ## Licença
 
