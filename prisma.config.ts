@@ -1,5 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
 import { defineConfig } from "prisma/config";
+
+config();
+config({ path: ".env.local", override: true });
 
 const databaseUrl = process.env.DATABASE_URL;
 
