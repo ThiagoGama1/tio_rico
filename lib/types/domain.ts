@@ -339,7 +339,7 @@ export type AiAnalysisOutput = z.infer<typeof AiAnalysisOutputSchema>;
 // =============================================================================
 
 export const CreateCheckInRequestSchema = z.object({
-  profileId: z.string().min(1),
+  profileId: z.string().trim().min(1),
   referenceMonth: ReferenceMonthSchema,
   userNotes: z.string().max(4000).default(""),
   contributionCents: z.number().int().nonnegative(),
