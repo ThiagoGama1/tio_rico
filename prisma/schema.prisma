@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model InvestorProfile {
+  id                 String           @id @default(cuid())
+  name               String
+  email              String?
+  riskProfile        String
+  horizonMonths      Int
+  monthlyIncomeCents Int?
+  goals              Json
+  targetAllocation   Json
+  preferences        Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  assets             PortfolioAsset[]
+  checkIns           CheckIn[]
+
+  @@map("investor_profiles")
+}
+
+model PortfolioAsset {
+  id          String          @id @default(cuid())
+  profileId   String
+  name        String
+  assetClass  String
+  amountCents Int
+  indexer     String?
+  indexerRate Float?
+  liquidity   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  profile     InvestorProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("portfolio_assets")
+}
+
+model CheckIn {
+  id                String            @id @default(cuid())
+  profileId         String
+  referenceMonth    String
+  userNotes         String
+  contributionCents Int
+  totalValueCents   Int
+  adherenceScore    Float?
+  macroSnapshot     Json
+  motorResult       Json
+  aiAnalysis        Json?
+  newsSources       Json?
+  createdAt         DateTime          @default(now())
+  profile           InvestorProfile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  positions         CheckInPosition[]
+
+  @@index([profileId, referenceMonth])
+  @@index([profileId, createdAt])
+  @@map("check_ins")
+}
+
+model CheckInPosition {
+  id            String  @id @default(cuid())
+  checkInId     String
+  assetClass    String
+  assetLabel    String
+  amountCents   Int
+  allocationPct Float
+  targetPct     Float
+  checkIn       CheckIn @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+
+  @@index([checkInId])
+  @@map("check_in_positions")
+}
+
+model MacroSnapshot {
+  id              String   @id @default(cuid())
+  selicMetaAnnual Float
+  selicDate       String
+  cdiAnnual       Float
+  cdiDaily        Float?
+  cdiDate         String
+  ipcaMonthly     Float
+  ipca12m         Float
+  ipcaDate        String
+  rawPayload      Json?
+  fetchedAt       DateTime @default(now())
+
+  @@index([fetchedAt])
+  @@map("macro_snapshots")
+}
