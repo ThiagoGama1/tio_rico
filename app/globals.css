@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import url("https://fonts.googleapis.com/css2?family=Intel+One+Mono:ital,wght@0,300..700;1,300..700&family=K2D:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
@@ -58,15 +57,15 @@
   }
 
   .h2 {
-    @apply text-3xl font-semibold tracking-tight text-(var(--green-1)) font-k2d;
+    @apply text-3xl font-semibold tracking-tight text-(--green-1) font-k2d;
   }
 
   .h3 {
-    @apply text-2xl font-medium text-(var(--green-2)) font-k2d;
+    @apply text-2xl font-medium text-(--green-2) font-k2d;
   }
 
   .h4 {
-    @apply text-xl font-medium text-(var(--green-2)) font-k2d;
+    @apply text-xl font-medium text-(--green-2) font-k2d;
   }
 
   .p {
