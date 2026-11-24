@@ -1,5 +1,18 @@
 import type { Metadata } from "next";
+import { Intel_One_Mono, K2D } from "next/font/google";
 import "./globals.css";
+
+const k2d = K2D({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--k2d-font",
+});
+
+const intelOneMono = Intel_One_Mono({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--intel-font",
+});
 
 export const metadata: Metadata = {
   title: "Tio Rico",
@@ -8,7 +21,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={"h-full antialiased"}>
+    <html
+      lang="en"
+      className={`${k2d.variable} ${intelOneMono.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
