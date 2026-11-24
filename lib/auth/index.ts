@@ -23,6 +23,7 @@ export const DEMO_PROVIDER_ID = "demo";
  * Variáveis: AUTH_SECRET, AUTH_RESEND_KEY, AUTH_EMAIL_FROM.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
+  trustHost: true,
   ...(isDatabaseConfigured() ? { adapter: PrismaAdapter(getPrisma()) } : {}),
   session: { strategy: "jwt" },
   providers: [
