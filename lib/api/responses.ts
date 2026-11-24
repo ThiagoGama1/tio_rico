@@ -1,0 +1,72 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
+
+/**
+ * Helpers compartilhados pelas rotas de sessão, perfil e carteira.
+ * Mesmo formato das rotas de checkins: `{ error, details? }` + `Cache-Control: no-store`.
+ */
+
+export const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
+
+export function jsonOk(body: unknown, status = 200): NextResponse {
+  return NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
+}
+
+export function jsonError(
+  status: number,
+  error: string,
+  extra?: Record<string, unknown>,
+): NextResponse {
+  return NextResponse.json(
+    { error, ...extra },
+    { status, headers: NO_STORE_HEADERS },
+  );
+}
+
+export function unauthorized(): NextResponse {
+  return jsonError(401, "Não autenticado. Faça login para continuar.");
+}
+
+export function databaseNotConfigured(action: string): NextResponse {
+  return jsonError(
+    503,
+    `Banco de dados não configurado. Defina DATABASE_URL para ${action}.`,
+  );
+}
+
+export function profileNotFound(): NextResponse {
+  return jsonError(
+    404,
+    "Perfil de investidor não encontrado. Crie o perfil em POST /api/profile.",
+  );
+}
+
+type ParseResult<T> = { ok: true; data: T } | { ok: false; response: NextResponse };
+
+/** Lê o JSON do corpo e valida com Zod (400 se JSON inválido ou dados inválidos). */
+export async function parseJsonBody<S extends z.ZodType>(
+  request: NextRequest,
+  schema: S,
+  invalidMessage: string,
+): Promise<ParseResult<z.output<S>>> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return {
+      ok: false,
+      response: jsonError(400, "Corpo da requisição deve ser um JSON válido."),
+    };
+  }
+
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      response: jsonError(400, invalidMessage, {
+        details: z.flattenError(parsed.error),
+      }),
+    };
+  }
+  return { ok: true, data: parsed.data };
+}
