@@ -9,7 +9,7 @@ function Input({
   ...props
 }: React.ComponentProps<"input">) {
   return (
-    <div className="flex flex-col items-center grid-cols-1 m- 0">
+    <div className="flex flex-col items-center grid-cols-1 ">
       <h1 className="h4 h-6">{placeholder}</h1>
       <InputPrimitive
         type={type}
