@@ -11,6 +11,7 @@ import type {
   InvestorProfileWithAssets,
   SaveCheckInInput,
 } from "@/lib/history/repository";
+import type { EntradaMotor, ResultadoMotor } from "@/motor/tipos";
 
 const mocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn<() => boolean>(),
@@ -29,7 +30,16 @@ const mocks = vi.hoisted(() => ({
     (options: { assetClasses: string[] }) => Promise<NewsFetchResult>
   >(),
   generateInvestmentAnalysis: vi.fn(),
+  gerarDiagnostico: vi.fn<(entrada: EntradaMotor) => ResultadoMotor>(),
 }));
+
+vi.mock("@/motor", async () => {
+  const actual = await vi.importActual<typeof import("@/motor")>("@/motor");
+  return {
+    ...actual,
+    gerarDiagnostico: mocks.gerarDiagnostico,
+  };
+});
 
 vi.mock("@/lib/db/prisma", () => ({
   isDatabaseConfigured: mocks.isDatabaseConfigured,
@@ -148,6 +158,49 @@ const SAMPLE_PROFILE: InvestorProfileWithAssets = {
   ],
 };
 
+// Motor result for SAMPLE_PROFILE (R$ 7.000 / 2.000 / 1.000) with a R$ 1.000
+// contribution. The motor is mocked so these route tests do not depend on it.
+const CURRENT_MOTOR_RESULT: ResultadoMotor = {
+  totalCentavos: 1_000_000,
+  aporteCentavos: 100_000,
+  totalPosAporteCentavos: 1_100_000,
+  classes: [
+    {
+      classe: "renda_fixa_pos",
+      valorCentavos: 700_000,
+      atualPct: 70,
+      alvoPct: 50,
+      desvioPct: 20,
+      aporteCentavos: 0,
+      posAportePct: 63.64,
+    },
+    {
+      classe: "acoes",
+      valorCentavos: 200_000,
+      atualPct: 20,
+      alvoPct: 30,
+      desvioPct: -10,
+      aporteCentavos: 54_167,
+      posAportePct: 23.11,
+    },
+    {
+      classe: "fiis",
+      valorCentavos: 100_000,
+      atualPct: 10,
+      alvoPct: 20,
+      desvioPct: -10,
+      aporteCentavos: 45_833,
+      posAportePct: 13.26,
+    },
+  ],
+  aderencia: 80,
+  aderenciaPosAporte: 86.36,
+  rendimentoAnualPct: 15.1,
+  rendimentoRealPct: 9.77,
+  juroRealPct: 9.44,
+  versao: "motor-v1",
+};
+
 const PREVIOUS_CHECKIN: CheckInDetail = {
   id: "chk-prev-1",
   profileId: "demo-marina-costa",
@@ -158,44 +211,44 @@ const PREVIOUS_CHECKIN: CheckInDetail = {
   adherenceScore: 76,
   macroSnapshot: SAMPLE_MACRO,
   motorResult: {
-    totalCurrentCents: 900_000,
-    contributionCents: 80_000,
-    totalAfterContributionCents: 980_000,
-    allocations: [
+    totalCentavos: 900_000,
+    aporteCentavos: 80_000,
+    totalPosAporteCentavos: 980_000,
+    classes: [
       {
-        assetClass: "renda_fixa_pos",
-        currentCents: 666_000,
-        currentPct: 74,
-        targetPct: 50,
-        deviationPct: 24,
-        suggestedContributionCents: 0,
-        projectedPctAfterContribution: 67.96,
+        classe: "renda_fixa_pos",
+        valorCentavos: 666_000,
+        atualPct: 74,
+        alvoPct: 50,
+        desvioPct: 24,
+        aporteCentavos: 0,
+        posAportePct: 67.96,
       },
       {
-        assetClass: "acoes",
-        currentCents: 144_000,
-        currentPct: 16,
-        targetPct: 30,
-        deviationPct: -14,
-        suggestedContributionCents: 50_000,
-        projectedPctAfterContribution: 19.8,
+        classe: "acoes",
+        valorCentavos: 144_000,
+        atualPct: 16,
+        alvoPct: 30,
+        desvioPct: -14,
+        aporteCentavos: 50_000,
+        posAportePct: 19.8,
       },
       {
-        assetClass: "fiis",
-        currentCents: 90_000,
-        currentPct: 10,
-        targetPct: 20,
-        deviationPct: -10,
-        suggestedContributionCents: 30_000,
-        projectedPctAfterContribution: 12.24,
+        classe: "fiis",
+        valorCentavos: 90_000,
+        atualPct: 10,
+        alvoPct: 20,
+        desvioPct: -10,
+        aporteCentavos: 30_000,
+        posAportePct: 12.24,
       },
     ],
-    adherenceScore: 76,
-    adherenceScoreAfterContribution: 82.04,
-    estimatedAnnualYieldPct: 15.2,
-    estimatedRealYieldPct: 9.87,
-    realInterestRatePct: 9.44,
-    engineVersion: "fallback-adapter-v1",
+    aderencia: 76,
+    aderenciaPosAporte: 82.04,
+    rendimentoAnualPct: 15.2,
+    rendimentoRealPct: 9.87,
+    juroRealPct: 9.44,
+    versao: "motor-v1",
   },
   aiAnalysis: null,
   newsSources: null,
@@ -347,6 +400,7 @@ describe("POST /api/checkins", () => {
     mocks.getProfileWithAssets.mockResolvedValue(SAMPLE_PROFILE);
     mocks.listCheckIns.mockResolvedValue([PREVIOUS_CHECKIN]);
     mocks.getMacroIndicators.mockResolvedValue(SAMPLE_MACRO);
+    mocks.gerarDiagnostico.mockReturnValue(CURRENT_MOTOR_RESULT);
     mocks.fetchEconomicNews.mockResolvedValue(SAMPLE_NEWS);
     mocks.generateInvestmentAnalysis.mockResolvedValue({
       analysis: SAMPLE_ANALYSIS,
@@ -482,9 +536,9 @@ describe("POST /api/checkins", () => {
     expect(mocks.generateInvestmentAnalysis).toHaveBeenCalledTimes(1);
 
     const advisorCallArg = mocks.generateInvestmentAnalysis.mock.calls[0][0];
-    expect(advisorCallArg.motorResult.totalCurrentCents).toBe(1_000_000);
-    expect(advisorCallArg.motorResult.contributionCents).toBe(100_000);
-    expect(advisorCallArg.motorResult.adherenceScore).toBe(80);
+    expect(advisorCallArg.motorResult.totalCentavos).toBe(1_000_000);
+    expect(advisorCallArg.motorResult.aporteCentavos).toBe(100_000);
+    expect(advisorCallArg.motorResult.aderencia).toBe(80);
     // Evolution passed to AI includes the provisional current check-in so N-1 -> N deltas are visible
     expect(advisorCallArg.evolutionSummary.totalCheckIns).toBe(2);
     expect(advisorCallArg.evolutionSummary.deltaFromPreviousCents).toBe(100_000);
@@ -537,6 +591,76 @@ describe("POST /api/checkins", () => {
       macroIsStale: false,
       newsAvailable: false,
     });
+  });
+
+  it("sends the profile portfolio to the motor in the motor's input shape", async () => {
+    mocks.getProfileWithAssets.mockResolvedValue({
+      ...SAMPLE_PROFILE,
+      preferences: { excludeCrypto: true },
+    });
+
+    await POST(
+      makeJsonPostRequest({
+        profileId: "demo-marina-costa",
+        referenceMonth: "2026-11",
+        contributionCents: 100_000,
+        skipAi: true,
+        skipNews: true,
+      }),
+    );
+
+    expect(mocks.gerarDiagnostico).toHaveBeenCalledTimes(1);
+    const entrada = mocks.gerarDiagnostico.mock.calls[0][0];
+    expect(entrada.perfil).toEqual({ tipo: "moderado", excluir: ["cripto"] });
+    expect(entrada.alvo).toEqual({ renda_fixa_pos: 50, acoes: 30, fiis: 20 });
+    expect(entrada.aporteCentavos).toBe(100_000);
+    expect(entrada.horizonteMeses).toBe(60);
+    expect(entrada.indicadores).toEqual({
+      selicPct: 14.75,
+      cdiPct: 14.65,
+      ipca12mPct: 4.85,
+    });
+    expect(entrada.carteira).toEqual([
+      {
+        nome: "Tesouro Selic 2029",
+        classe: "renda_fixa_pos",
+        valorCentavos: 700_000,
+        indexador: "SELIC",
+        taxaIndexador: 100,
+      },
+      {
+        nome: "ETF Ibovespa",
+        classe: "acoes",
+        valorCentavos: 200_000,
+        indexador: null,
+        taxaIndexador: null,
+      },
+      {
+        nome: "FII Logística",
+        classe: "fiis",
+        valorCentavos: 100_000,
+        indexador: null,
+        taxaIndexador: null,
+      },
+    ]);
+  });
+
+  it("returns 500 without persisting when the motor fails", async () => {
+    mocks.gerarDiagnostico.mockImplementation(() => {
+      throw new Error("gerarDiagnostico ainda não foi implementado");
+    });
+
+    const response = await POST(
+      makeJsonPostRequest({
+        profileId: "demo-marina-costa",
+        referenceMonth: "2026-11",
+        contributionCents: 100_000,
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocks.generateInvestmentAnalysis).not.toHaveBeenCalled();
+    expect(mocks.saveCheckIn).not.toHaveBeenCalled();
   });
 
   it("returns 503 on AiConfigurationError without persisting check-in", async () => {

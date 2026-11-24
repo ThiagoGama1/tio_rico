@@ -16,7 +16,8 @@ import {
 } from "@/lib/history/repository";
 import { getMacroIndicators } from "@/lib/integrations/bcb";
 import { fetchEconomicNews } from "@/lib/integrations/firecrawl";
-import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import { montarEntradaMotor } from "@/lib/motor/conversao";
+import { gerarDiagnostico } from "@/motor";
 import {
   CreateCheckInRequestSchema,
   type AiAnalysisOutput,
@@ -195,16 +196,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       targetAllocation: profile.targetAllocation,
     };
 
-    const motorResult = calculatePortfolioWithMotor({
-      riskProfile: profile.riskProfile,
-      horizonMonths: profile.horizonMonths,
-      positions,
-      targetAllocation: profile.targetAllocation,
-      contributionCents: data.contributionCents,
-      macro: macroIndicators,
-    });
+    const motorResult = gerarDiagnostico(
+      montarEntradaMotor({
+        riskProfile: profile.riskProfile,
+        horizonMonths: profile.horizonMonths,
+        positions,
+        targetAllocation: profile.targetAllocation,
+        contributionCents: data.contributionCents,
+        macro: macroIndicators,
+        preferences: profile.preferences,
+      }),
+    );
 
-    const totalCurrentCents = motorResult.totalCurrentCents;
+    const totalCurrentCents = motorResult.totalCentavos;
     const checkInPositions: SaveCheckInPositionInput[] = positions.map(
       (position) => ({
         assetClass: position.assetClass,
@@ -222,8 +226,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     for (const position of positions) {
       assetClassSet.add(position.assetClass);
     }
-    for (const allocation of motorResult.allocations) {
-      assetClassSet.add(allocation.assetClass);
+    for (const resultadoClasse of motorResult.classes) {
+      assetClassSet.add(resultadoClasse.classe);
     }
     const assetClasses = Array.from(assetClassSet);
 
@@ -243,7 +247,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       userNotes: data.userNotes,
       contributionCents: data.contributionCents,
       totalValueCents: totalCurrentCents,
-      adherenceScore: motorResult.adherenceScore,
+      adherenceScore: motorResult.aderencia,
       macroSnapshot: macroIndicators,
       motorResult,
       aiAnalysis: null,
@@ -312,7 +316,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       userNotes: data.userNotes,
       contributionCents: data.contributionCents,
       totalValueCents: totalCurrentCents,
-      adherenceScore: motorResult.adherenceScore,
+      adherenceScore: motorResult.aderencia,
       macroSnapshot: macroIndicators,
       motorResult,
       aiAnalysis,

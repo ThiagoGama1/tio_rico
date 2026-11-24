@@ -7,8 +7,8 @@ import {
   InvestorGoalSchema,
   InvestorPreferencesSchema,
   MacroIndicatorsSchema,
-  MotorCalculationResultSchema,
   NewsFetchResultSchema,
+  ResultadoMotorSchema,
   ReferenceMonthSchema,
   RiskProfileSchema,
   TargetAllocationSchema,
@@ -18,11 +18,11 @@ import {
   type CheckInPositionDetail,
   type InvestorProfile,
   type MacroIndicators,
-  type MotorCalculationResult,
   type NewsFetchResult,
   type PortfolioPositionInput,
   type ReferenceMonth,
 } from "@/lib/types/domain";
+import type { ResultadoMotor } from "@/motor/tipos";
 
 export const DEMO_PROFILE_ID = "demo-marina-costa";
 
@@ -73,7 +73,7 @@ export interface SaveCheckInInput {
   totalValueCents: number;
   adherenceScore: number | null;
   macroSnapshot: MacroIndicators;
-  motorResult: MotorCalculationResult;
+  motorResult: ResultadoMotor;
   aiAnalysis?: AiAnalysisOutput | null;
   newsSources?: NewsFetchResult | null;
   positions: SaveCheckInPositionInput[];
@@ -203,7 +203,7 @@ function hydrateCheckIn(row: PrismaCheckInWithPositions): CheckInDetail {
     );
   }
 
-  const motorParsed = MotorCalculationResultSchema.safeParse(row.motorResult);
+  const motorParsed = ResultadoMotorSchema.safeParse(row.motorResult);
   if (!motorParsed.success) {
     throw new RepositoryHydrationError(
       `Check-in ${row.id} possui motorResult incompatível com o contrato de domínio.`,

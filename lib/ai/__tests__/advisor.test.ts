@@ -21,8 +21,30 @@ import {
   getAiProviderStatus,
   resolveAiModel,
 } from "@/lib/ai/provider";
-import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import { resultadoMotorFake } from "@/lib/testing/resultado-motor-fake";
 import type { AiAnalysisOutput, MacroIndicators } from "@/lib/types/domain";
+
+// The analyze route calls the motor when no motorResult is sent. These tests
+// cover the AI layer, so the motor is replaced by the test fake.
+vi.mock("@/motor", async () => {
+  const actual = await vi.importActual<typeof import("@/motor")>("@/motor");
+  const { resultadoMotorFake: fake } = await import(
+    "@/lib/testing/resultado-motor-fake"
+  );
+  return {
+    ...actual,
+    gerarDiagnostico: vi.fn((entrada: import("@/motor").EntradaMotor) =>
+      fake({
+        positions: entrada.carteira.map((ativo) => ({
+          assetClass: ativo.classe,
+          amountCents: ativo.valorCentavos,
+        })),
+        targetAllocation: entrada.alvo,
+        contributionCents: entrada.aporteCentavos,
+      }),
+    ),
+  };
+});
 
 const SAMPLE_MACRO: MacroIndicators = {
   selicMetaAnnual: 14.75,
@@ -53,13 +75,10 @@ function createSampleInput(): AdvisorContextInput {
     },
   ];
   const targetAllocation = { renda_fixa_pos: 50, acoes: 50 };
-  const motorResult = calculatePortfolioWithMotor({
-    riskProfile: "moderado",
-    horizonMonths: 60,
+  const motorResult = resultadoMotorFake({
     positions,
     targetAllocation,
     contributionCents: 200_000,
-    macro: SAMPLE_MACRO,
   });
 
   return {

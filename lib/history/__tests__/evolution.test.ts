@@ -8,7 +8,7 @@ import {
   formatSignedPctBR,
   formatSignedPpBR,
 } from "@/lib/history/evolution";
-import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import { resultadoMotorFake } from "@/lib/testing/resultado-motor-fake";
 import {
   PortfolioEvolutionSummarySchema,
   type CheckInDetail,
@@ -56,16 +56,13 @@ function buildCheckIn(params: {
   omitPositionDetails?: boolean;
 }): CheckInDetail {
   const target = params.targetAllocation ?? TARGET_ALLOCATION;
-  const motorResult = calculatePortfolioWithMotor({
-    riskProfile: "moderado",
-    horizonMonths: 60,
+  const motorResult = resultadoMotorFake({
     positions: params.positions,
     targetAllocation: target,
     contributionCents: params.contributionCents,
-    macro: SAMPLE_MACRO,
   });
 
-  const totalValueCents = motorResult.totalCurrentCents;
+  const totalValueCents = motorResult.totalCentavos;
   const positionDetails: CheckInPositionDetail[] = params.omitPositionDetails
     ? []
     : params.positions.map((pos, index) => ({
@@ -89,7 +86,7 @@ function buildCheckIn(params: {
     totalValueCents,
     adherenceScore:
       params.adherenceScore === undefined
-        ? motorResult.adherenceScore
+        ? motorResult.aderencia
         : params.adherenceScore,
     macroSnapshot: SAMPLE_MACRO,
     motorResult,
@@ -534,7 +531,7 @@ describe("computePortfolioEvolution", () => {
     });
   });
 
-  it("falls back to motorResult.allocations when check-in positions array is empty", () => {
+  it("falls back to motorResult.classes when check-in positions array is empty", () => {
     const checkIn = buildCheckIn({
       id: "ci-motor-fallback",
       referenceMonth: "2026-11",
