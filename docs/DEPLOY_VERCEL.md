@@ -75,7 +75,7 @@ Configure as variáveis em **Vercel Dashboard → Settings → Environment Varia
 | `DATABASE_URL` | Sim | Production, Preview, Development | `postgresql://user:pass@host/db?sslmode=require` | Conexão direta PostgreSQL (Prisma CLI, `db push`, fallback de runtime). |
 | `DATABASE_URL_POOLED` | Recomendada | Production, Preview | `postgresql://user:pass@pooler-host/db?sslmode=require` | Conexão com *connection pooling* usada prioritariamente por `lib/db/prisma.ts` em Fluid Compute. |
 | `AI_PROVIDER` | Opcional | Production, Preview, Development | `anthropic` ou `google` | Seleciona explicitamente o provedor de LLM. Se omitida, faz autodetecção pelas chaves presentes (`ANTHROPIC_API_KEY` → `anthropic`, senão Google). |
-| `AI_MODEL` | Opcional | Production, Preview, Development | `claude-sonnet-4-5`, `gemini-2.5-flash` | Sobrescreve o modelo padrão do provedor escolhido. |
+| `AI_MODEL` | Opcional | Production, Preview, Development | `claude-sonnet-4-5`, `gemini-3.5-flash-lite` | Sobrescreve o modelo padrão do provedor escolhido. |
 | `ANTHROPIC_API_KEY` | Sim (se Anthropic) | Production, Preview, Development | `sk-ant-...` | Chave privada da API Anthropic (Claude). Obrigatória quando `AI_PROVIDER="anthropic"`. |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Sim (se Google) | Production, Preview, Development | `AIza...` | Chave privada da API Google Gemini. Obrigatória quando `AI_PROVIDER="google"` (o alias `GEMINI_API_KEY` também é aceito). |
 | `FIRECRAWL_API_KEY` | Opcional | Production, Preview, Development | `fc-...` | Coleta de notícias econômicas brasileiras. Se ausente, a análise continua normalmente em modo degradado sem notícias. |
