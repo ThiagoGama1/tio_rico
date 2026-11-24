@@ -1,15 +1,22 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   AiGenerationError,
   generateInvestmentAnalysis,
 } from "@/lib/ai/advisor";
 import { AiConfigurationError } from "@/lib/ai/provider";
+import {
+  databaseNotConfigured,
+  jsonError,
+  jsonOk,
+  profileNotFound,
+  unauthorized,
+} from "@/lib/api/responses";
+import { getSessionUser } from "@/lib/auth/session";
 import { isDatabaseConfigured } from "@/lib/db/prisma";
 import { computePortfolioEvolution } from "@/lib/history/evolution";
 import {
   RepositoryHydrationError,
-  getProfileWithAssets,
   listCheckIns,
   saveCheckIn,
   type SaveCheckInPositionInput,
@@ -17,6 +24,10 @@ import {
 import { getMacroIndicators } from "@/lib/integrations/bcb";
 import { fetchEconomicNews } from "@/lib/integrations/firecrawl";
 import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import {
+  getProfileForUser,
+  getProfileIdForUser,
+} from "@/lib/profile/repository";
 import {
   CreateCheckInRequestSchema,
   type AiAnalysisOutput,
@@ -26,10 +37,11 @@ import {
   type PortfolioPositionInput,
 } from "@/lib/types/domain";
 
-const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
 const MAX_CHECKIN_LIST_LIMIT = 100;
 
-const PostCheckInRequestSchema = CreateCheckInRequestSchema.extend({
+const PostCheckInRequestSchema = CreateCheckInRequestSchema.omit({
+  profileId: true,
+}).extend({
   skipAi: z.boolean().optional(),
   skipNews: z.boolean().optional(),
   syncPortfolioAssets: z.boolean().optional(),
@@ -59,92 +71,72 @@ function parseLimitParam(
 export async function GET(request: NextRequest): Promise<NextResponse> {
   // Always read searchParams before any early return so Next.js 16.4
   // (`cacheComponents: true`) treats this Route Handler as dynamic.
-  const rawProfileId = request.nextUrl.searchParams.get("profileId");
   const rawLimit = request.nextUrl.searchParams.get("limit");
-  const profileId = rawProfileId?.trim() || undefined;
+
+  const user = await getSessionUser();
+  if (!user) {
+    return unauthorized();
+  }
 
   if (!isDatabaseConfigured()) {
-    return NextResponse.json(
-      {
-        error:
-          "Banco de dados não configurado. Defina DATABASE_URL para consultar check-ins.",
-      },
-      { status: 503, headers: NO_STORE_HEADERS },
-    );
+    return databaseNotConfigured("consultar check-ins");
   }
 
   const parsedLimit = parseLimitParam(rawLimit);
   if (!parsedLimit.ok) {
-    return NextResponse.json(
-      { error: "Parâmetro 'limit' deve ser um número inteiro positivo." },
-      { status: 400, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(400, "Parâmetro 'limit' deve ser um número inteiro positivo.");
   }
 
   try {
-    const profile = await getProfileWithAssets(profileId);
-    if (!profile) {
-      return NextResponse.json(
-        { error: "Perfil de investidor não encontrado." },
-        { status: 404, headers: NO_STORE_HEADERS },
-      );
+    const profileId = await getProfileIdForUser(user.id);
+    if (!profileId) {
+      return profileNotFound();
     }
 
-    const checkIns = await listCheckIns(profile.id, {
+    const checkIns = await listCheckIns(profileId, {
       limit: parsedLimit.value,
     });
 
-    return NextResponse.json(
-      {
-        profileId: profile.id,
-        checkIns,
-      },
-      { status: 200, headers: NO_STORE_HEADERS },
-    );
+    return jsonOk({
+      profileId,
+      checkIns,
+    });
   } catch (error) {
     if (error instanceof RepositoryHydrationError) {
-      return NextResponse.json(
-        { error: "Histórico de check-ins com dados inconsistentes no banco." },
-        { status: 500, headers: NO_STORE_HEADERS },
+      return jsonError(
+        500,
+        "Histórico de check-ins com dados inconsistentes no banco.",
       );
     }
 
-    return NextResponse.json(
-      { error: "Falha ao listar check-ins no banco de dados." },
-      { status: 500, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(500, "Falha ao listar check-ins no banco de dados.");
   }
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const user = await getSessionUser();
+  if (!user) {
+    return unauthorized();
+  }
+
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "Corpo da requisição deve ser um JSON válido." },
-      { status: 400, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(400, "Corpo da requisição deve ser um JSON válido.");
   }
 
   const parsed = PostCheckInRequestSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      {
-        error: "Dados inválidos para criação do check-in.",
-        details: z.flattenError(parsed.error),
-      },
-      { status: 400, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(400, "Dados inválidos para criação do check-in.", {
+      details: z.flattenError(parsed.error),
+    });
   }
 
   if (!isDatabaseConfigured()) {
-    return NextResponse.json(
-      {
-        error:
-          "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins ou utilize POST /api/checkins/analyze para análise stateless sem persistência.",
-      },
-      { status: 503, headers: NO_STORE_HEADERS },
+    return jsonError(
+      503,
+      "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins ou utilize POST /api/checkins/analyze para análise stateless sem persistência.",
     );
   }
 
@@ -153,12 +145,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const shouldSkipAi = data.skipAi === true || data.includeAiAnalysis === false;
 
   try {
-    const profile = await getProfileWithAssets(data.profileId);
+    const profile = await getProfileForUser(user.id);
     if (!profile) {
-      return NextResponse.json(
-        { error: "Perfil de investidor não encontrado." },
-        { status: 404, headers: NO_STORE_HEADERS },
-      );
+      return profileNotFound();
     }
 
     const positions: PortfolioPositionInput[] =
@@ -175,12 +164,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }));
 
     if (positions.length === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Nenhuma posição de carteira foi informada ou encontrada para este perfil.",
-        },
-        { status: 400, headers: NO_STORE_HEADERS },
+      return jsonError(
+        400,
+        "Nenhuma posição de carteira foi informada ou encontrada para este perfil.",
       );
     }
 
@@ -289,17 +275,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         aiModelId = aiResult.modelId;
       } catch (error) {
         if (error instanceof AiConfigurationError) {
-          return NextResponse.json(
-            { error: error.message, code: error.code },
-            { status: 503, headers: NO_STORE_HEADERS },
-          );
+          return jsonError(503, error.message, { code: error.code });
         }
 
         if (error instanceof AiGenerationError) {
-          return NextResponse.json(
-            { error: error.message, code: error.code },
-            { status: 502, headers: NO_STORE_HEADERS },
-          );
+          return jsonError(502, error.message, { code: error.code });
         }
 
         throw error;
@@ -327,7 +307,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       profileContext,
     );
 
-    return NextResponse.json(
+    return jsonOk(
       {
         checkIn,
         evolution,
@@ -339,19 +319,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           newsAvailable: news.newsAvailable,
         },
       },
-      { status: 201, headers: NO_STORE_HEADERS },
+      201,
     );
   } catch (error) {
     if (error instanceof RepositoryHydrationError) {
-      return NextResponse.json(
-        { error: "Dados inconsistentes no histórico do perfil." },
-        { status: 500, headers: NO_STORE_HEADERS },
-      );
+      return jsonError(500, "Dados inconsistentes no histórico do perfil.");
     }
 
-    return NextResponse.json(
-      { error: "Erro interno ao processar e salvar o check-in mensal." },
-      { status: 500, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(500, "Erro interno ao processar e salvar o check-in mensal.");
   }
 }

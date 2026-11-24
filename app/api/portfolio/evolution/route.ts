@@ -1,38 +1,34 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextResponse } from "next/server";
+import {
+  databaseNotConfigured,
+  jsonError,
+  jsonOk,
+  profileNotFound,
+  unauthorized,
+} from "@/lib/api/responses";
+import { getSessionUser } from "@/lib/auth/session";
 import { isDatabaseConfigured } from "@/lib/db/prisma";
 import { computePortfolioEvolution } from "@/lib/history/evolution";
 import {
   RepositoryHydrationError,
-  getProfileWithAssets,
   listCheckIns,
 } from "@/lib/history/repository";
+import { getProfileForUser } from "@/lib/profile/repository";
 
-const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
-
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  // Read searchParams before early returns so Next.js 16.4 (cacheComponents: true)
-  // always treats this route handler as dynamic even when DATABASE_URL is absent at build time.
-  const rawProfileId = request.nextUrl.searchParams.get("profileId");
-  const profileId = rawProfileId?.trim() || undefined;
+export async function GET(): Promise<NextResponse> {
+  const user = await getSessionUser();
+  if (!user) {
+    return unauthorized();
+  }
 
   if (!isDatabaseConfigured()) {
-    return NextResponse.json(
-      {
-        error:
-          "Banco de dados não configurado. Defina DATABASE_URL para consultar a evolução da carteira.",
-      },
-      { status: 503, headers: NO_STORE_HEADERS },
-    );
+    return databaseNotConfigured("consultar a evolução da carteira");
   }
 
   try {
-    const profile = await getProfileWithAssets(profileId);
-
+    const profile = await getProfileForUser(user.id);
     if (!profile) {
-      return NextResponse.json(
-        { error: "Perfil de investidor não encontrado." },
-        { status: 404, headers: NO_STORE_HEADERS },
-      );
+      return profileNotFound();
     }
 
     const checkIns = await listCheckIns(profile.id, { order: "asc" });
@@ -42,25 +38,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       targetAllocation: profile.targetAllocation,
     });
 
-    return NextResponse.json(
-      {
-        profile,
-        evolution,
-        checkInsCount: checkIns.length,
-      },
-      { status: 200, headers: NO_STORE_HEADERS },
-    );
+    return jsonOk({
+      profile,
+      evolution,
+      checkInsCount: checkIns.length,
+    });
   } catch (error) {
     if (error instanceof RepositoryHydrationError) {
-      return NextResponse.json(
-        { error: "Histórico da carteira com dados inconsistentes." },
-        { status: 500, headers: NO_STORE_HEADERS },
-      );
+      return jsonError(500, "Histórico da carteira com dados inconsistentes.");
     }
 
-    return NextResponse.json(
-      { error: "Falha ao calcular a evolução da carteira." },
-      { status: 500, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(500, "Falha ao calcular a evolução da carteira.");
   }
 }

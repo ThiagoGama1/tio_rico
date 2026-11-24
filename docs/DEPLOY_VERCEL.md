@@ -79,6 +79,9 @@ Configure as variáveis em **Vercel Dashboard → Settings → Environment Varia
 | `ANTHROPIC_API_KEY` | Sim (se Anthropic) | Production, Preview, Development | `sk-ant-...` | Chave privada da API Anthropic (Claude). Obrigatória quando `AI_PROVIDER="anthropic"`. |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Sim (se Google) | Production, Preview, Development | `AIza...` | Chave privada da API Google Gemini. Obrigatória quando `AI_PROVIDER="google"` (o alias `GEMINI_API_KEY` também é aceito). |
 | `FIRECRAWL_API_KEY` | Opcional | Production, Preview, Development | `fc-...` | Coleta de notícias econômicas brasileiras. Se ausente, a análise continua normalmente em modo degradado sem notícias. |
+| `AUTH_SECRET` | Sim | Production, Preview, Development | Gerado por `npx auth secret` | Segredo usado pelo Auth.js v5 para assinar o cookie de sessão JWT. |
+| `AUTH_RESEND_KEY` | Sim (para login por e-mail) | Production, Preview, Development | `re_...` | Chave da API Resend para envio do link mágico de login por e-mail (`/api/session/email`). |
+| `AUTH_EMAIL_FROM` | Sim (para login por e-mail) | Production, Preview, Development | `Tio Rico <onboarding@resend.dev>` | Remetente verificado na Resend para os e-mails de login. Sem domínio próprio, `onboarding@resend.dev` entrega apenas ao e-mail da conta Resend. |
 
 > **Observações:**
 > - A API do **Banco Central (BCB SGS)** é pública e **não exige chave**.
@@ -177,24 +180,35 @@ curl.exe -s "https://SEU-DOMINIO.vercel.app/api/indicators?refresh=true"
 ```
 **Esperado:** HTTP `200` com `selicMetaAnnual`, `cdiAnnual`, `ipcaMonthly`, `ipca12m`, `ipcaHistory` e `source: "bcb_sgs"` (ou `"database_cache"` / `"fallback"` se o BCB estiver temporariamente indisponível).
 
-### 6.3. Evolução e Histórico da Carteira (`/api/portfolio/evolution`)
+### 6.2.1. Sessão e Login (`/api/session` e `/api/session/demo`)
 ```bash
-curl.exe -s "https://SEU-DOMINIO.vercel.app/api/portfolio/evolution"
+# Verifica sessão anônima inicial (retorna authenticated: false)
+curl.exe -s "https://SEU-DOMINIO.vercel.app/api/session"
+
+# Faz login na conta demo e salva cookie de sessão (cookies.txt)
+curl.exe -c cookies.txt -X POST "https://SEU-DOMINIO.vercel.app/api/session/demo"
 ```
-**Esperado:** HTTP `200` retornando o perfil demo (`demo-marina-costa`), `checkInsCount > 0` e a série histórica em `evolution.points` após rodar o seed.
+**Esperado:** `POST /api/session/demo` retorna HTTP `200` com `authenticated: true` e define o cookie de sessão para as rotas autenticadas (`/api/profile`, `/api/portfolio/*`, `/api/checkins*`).
+
+### 6.3. Evolução e Histórico da Carteira (`/api/portfolio/evolution`)
+Requer cookie de sessão autenticado (`-b cookies.txt`):
+```bash
+curl.exe -b cookies.txt -s "https://SEU-DOMINIO.vercel.app/api/portfolio/evolution"
+```
+**Esperado:** HTTP `200` retornando o perfil da sessão (`demo-marina-costa`), `checkInsCount > 0` e a série histórica em `evolution.points` após rodar o seed (sem sessão retorna `401`).
 
 ### 6.4. Check-ins Persistidos (`/api/checkins`)
-Listar check-ins existentes:
+Listar check-ins da sessão autenticada:
 ```bash
-curl.exe -s "https://SEU-DOMINIO.vercel.app/api/checkins"
+curl.exe -b cookies.txt -s "https://SEU-DOMINIO.vercel.app/api/checkins"
 ```
-Criar um check-in de teste (persiste no PostgreSQL com cálculo do motor, indicadores BCB e análise de IA):
+Criar um check-in de teste (persiste no PostgreSQL para o perfil da sessão com cálculo do motor, indicadores BCB e análise de IA):
 ```bash
-curl.exe -X POST "https://SEU-DOMINIO.vercel.app/api/checkins" \
+curl.exe -b cookies.txt -X POST "https://SEU-DOMINIO.vercel.app/api/checkins" \
   -H "Content-Type: application/json" \
-  -d "{\"profileId\":\"demo-marina-costa\",\"referenceMonth\":\"2026-06\",\"userNotes\":\"Check-in de validacao pos-deploy\",\"contributionCents\":150000,\"includeNews\":true,\"includeAiAnalysis\":true}"
+  -d "{\"referenceMonth\":\"2026-06\",\"userNotes\":\"Check-in de validacao pos-deploy\",\"contributionCents\":150000,\"includeNews\":true,\"includeAiAnalysis\":true}"
 ```
-**Esperado:** HTTP `201` (ou `200`) retornando o check-in salvo com `id`, `motorResult`, `macroSnapshot`, `aiAnalysis` e `positions`.
+**Esperado:** HTTP `201` retornando o check-in salvo com `id`, `motorResult`, `macroSnapshot`, `aiAnalysis` e `positions` (sem sessão retorna `401`).
 
 ### 6.5. Análise Stateless com IA (`/api/checkins/analyze`)
 ```bash
