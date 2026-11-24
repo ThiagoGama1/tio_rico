@@ -1,10 +1,11 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   AiGenerationError,
   generateInvestmentAnalysis,
 } from "@/lib/ai/advisor";
 import { AiConfigurationError } from "@/lib/ai/provider";
+import { jsonError, jsonOk, parseJsonBody } from "@/lib/api/responses";
 import { fetchEconomicNews } from "@/lib/integrations/firecrawl";
 import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
 import {
@@ -31,26 +32,12 @@ const AnalyzeCheckInRequestSchema = z.object({
 });
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Corpo da requisição deve ser um JSON válido." },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-
-  const parsed = AnalyzeCheckInRequestSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      {
-        error: "Dados inválidos para análise do check-in.",
-        details: z.flattenError(parsed.error),
-      },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
-    );
-  }
+  const parsed = await parseJsonBody(
+    request,
+    AnalyzeCheckInRequestSchema,
+    "Dados inválidos para análise do check-in.",
+  );
+  if (!parsed.ok) return parsed.response;
 
   const data = parsed.data;
 
@@ -96,44 +83,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       news,
     });
 
-    return NextResponse.json(
-      {
-        analysis,
-        motorResult,
-        news,
-        meta: {
-          provider,
-          modelId,
-        },
+    return jsonOk({
+      analysis,
+      motorResult,
+      news,
+      meta: {
+        provider,
+        modelId,
       },
-      { status: 200, headers: { "Cache-Control": "no-store" } },
-    );
+    });
   } catch (error) {
     if (error instanceof AiConfigurationError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-        },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
-      );
+      return jsonError(503, error.message, { code: error.code });
     }
 
     if (error instanceof AiGenerationError) {
-      return NextResponse.json(
-        {
-          error: error.message,
-          code: error.code,
-        },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
-      );
+      return jsonError(502, error.message, { code: error.code });
     }
 
-    return NextResponse.json(
-      {
-        error: "Erro interno inesperado ao gerar a análise do check-in.",
-      },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
+    return jsonError(
+      500,
+      "Erro interno inesperado ao gerar a análise do check-in.",
     );
   }
 }

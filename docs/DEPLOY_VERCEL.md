@@ -154,8 +154,8 @@ curl.exe -i "https://SEU-DOMINIO.vercel.app/api/health?strict=true"
 ```
 **Esperado:**
 - HTTP `200` com `Cache-Control: no-store`.
-- `"status": "ok"` quando PostgreSQL estiver conectado (`database.connected: true`) **e** o provedor de IA configurado (`ai.configured: true`).
-- Se faltar banco ou chave de IA: `/api/health` retorna HTTP `200` com `"status": "degraded"`, enquanto `/api/health?strict=true` retorna HTTP `503` (ideal para validação automatizada de prontidão).
+- `"status": "ok"` quando PostgreSQL estiver conectado (`database.connected: true`), o provedor de IA configurado (`ai.configured: true`) **e** o Auth.js configurado (`auth.configured: true`).
+- Se faltar banco, chave de IA ou `AUTH_SECRET`: `/api/health` retorna HTTP `200` com `"status": "degraded"`, enquanto `/api/health?strict=true` retorna HTTP `503` (ideal para validação automatizada de prontidão).
 - Nenhum segredo ou string de conexão aparece na resposta.
 
 Exemplo de resposta saudável:
@@ -166,6 +166,7 @@ Exemplo de resposta saudável:
   "checks": {
     "database": { "configured": true, "connected": true, "latencyMs": 42 },
     "ai": { "configured": true, "provider": "anthropic" },
+    "auth": { "configured": true, "emailLoginConfigured": true },
     "firecrawl": { "configured": true },
     "bcb": { "configured": true }
   }
