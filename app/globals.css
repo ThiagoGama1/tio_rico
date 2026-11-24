@@ -12,6 +12,7 @@
   --font-heading: var(--font-sans);
   --font-k2d: var(--k2d-font);
   --font-intel: var(--intel-font);
+  --font-ibm-plex: var(--ibm-plex-font);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
