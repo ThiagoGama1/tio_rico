@@ -11,7 +11,7 @@ export type AiProviderName = (typeof AI_PROVIDERS)[number];
  */
 export const DEFAULT_AI_MODELS: Record<AiProviderName, string> = {
   anthropic: "claude-sonnet-4-5",
-  google: "gemini-2.5-flash",
+  google: "gemini-3.5-flash-lite",
 };
 
 export type AiConfigurationErrorCode = "INVALID_PROVIDER" | "MISSING_API_KEY";

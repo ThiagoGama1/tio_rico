@@ -131,12 +131,12 @@ describe("AI provider resolution", () => {
     const resolved = resolveAiModel({
       env: {
         GEMINI_API_KEY: "AIza-test-key",
-        AI_MODEL: "gemini-2.5-pro",
+        AI_MODEL: "gemini-3.8-flash",
       },
     });
 
     expect(resolved.provider).toBe("google");
-    expect(resolved.modelId).toBe("gemini-2.5-pro");
+    expect(resolved.modelId).toBe("gemini-3.8-flash");
   });
 
   it("respects explicit AI_PROVIDER=google even when ANTHROPIC_API_KEY is also set", () => {
@@ -236,7 +236,7 @@ describe("generateInvestmentAnalysis", () => {
     const result = await generateInvestmentAnalysis(createSampleInput(), {
       model: FAKE_MODEL,
       provider: "google",
-      modelId: "gemini-2.5-flash",
+      modelId: "gemini-3.5-flash-lite",
       generateTextImpl: mockGenerateText,
     });
 

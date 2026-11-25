@@ -13,10 +13,12 @@ import type {
 } from "@/lib/history/repository";
 
 const mocks = vi.hoisted(() => ({
+  getSessionUser: vi.fn(),
   isDatabaseConfigured: vi.fn<() => boolean>(),
-  getProfileWithAssets: vi.fn<
-    (profileId?: string) => Promise<InvestorProfileWithAssets | null>
+  getProfileForUser: vi.fn<
+    (userId: string) => Promise<InvestorProfileWithAssets | null>
   >(),
+  getProfileIdForUser: vi.fn<(userId: string) => Promise<string | null>>(),
   listCheckIns: vi.fn<
     (
       profileId?: string,
@@ -31,8 +33,17 @@ const mocks = vi.hoisted(() => ({
   generateInvestmentAnalysis: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/session", () => ({
+  getSessionUser: mocks.getSessionUser,
+}));
+
 vi.mock("@/lib/db/prisma", () => ({
   isDatabaseConfigured: mocks.isDatabaseConfigured,
+}));
+
+vi.mock("@/lib/profile/repository", () => ({
+  getProfileForUser: mocks.getProfileForUser,
+  getProfileIdForUser: mocks.getProfileIdForUser,
 }));
 
 vi.mock("@/lib/history/repository", async () => {
@@ -41,7 +52,6 @@ vi.mock("@/lib/history/repository", async () => {
   >("@/lib/history/repository");
   return {
     ...actual,
-    getProfileWithAssets: mocks.getProfileWithAssets,
     listCheckIns: mocks.listCheckIns,
     saveCheckIn: mocks.saveCheckIn,
   };
@@ -273,6 +283,12 @@ const SAMPLE_ANALYSIS: AiAnalysisOutput = {
     "Análise exclusivamente educacional; não constitui recomendação de investimento.",
 };
 
+const SESSION_USER = {
+  id: "user-session-1",
+  email: "marina@example.com",
+  name: "Marina Costa",
+};
+
 function makeJsonPostRequest(body: unknown): NextRequest {
   return new NextRequest("http://localhost:3000/api/checkins", {
     method: "POST",
@@ -284,9 +300,20 @@ function makeJsonPostRequest(body: unknown): NextRequest {
 describe("GET /api/checkins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getSessionUser.mockResolvedValue(SESSION_USER);
     mocks.isDatabaseConfigured.mockReturnValue(true);
-    mocks.getProfileWithAssets.mockResolvedValue(SAMPLE_PROFILE);
+    mocks.getProfileIdForUser.mockResolvedValue(SAMPLE_PROFILE.id);
     mocks.listCheckIns.mockResolvedValue([PREVIOUS_CHECKIN]);
+  });
+
+  it("returns 401 when user is unauthenticated", async () => {
+    mocks.getSessionUser.mockResolvedValue(null);
+
+    const request = new NextRequest("http://localhost:3000/api/checkins");
+    const response = await GET(request);
+
+    expect(response.status).toBe(401);
+    expect(mocks.getProfileIdForUser).not.toHaveBeenCalled();
   });
 
   it("returns 503 when database is not configured", async () => {
@@ -298,19 +325,17 @@ describe("GET /api/checkins", () => {
 
     expect(response.status).toBe(503);
     expect(json.error).toContain("DATABASE_URL");
-    expect(mocks.getProfileWithAssets).not.toHaveBeenCalled();
+    expect(mocks.getProfileIdForUser).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when investor profile does not exist", async () => {
-    mocks.getProfileWithAssets.mockResolvedValue(null);
+  it("returns 404 when authenticated user has no investor profile", async () => {
+    mocks.getProfileIdForUser.mockResolvedValue(null);
 
-    const request = new NextRequest(
-      "http://localhost:3000/api/checkins?profileId=inexistente",
-    );
+    const request = new NextRequest("http://localhost:3000/api/checkins");
     const response = await GET(request);
 
     expect(response.status).toBe(404);
-    expect(mocks.getProfileWithAssets).toHaveBeenCalledWith("inexistente");
+    expect(mocks.getProfileIdForUser).toHaveBeenCalledWith(SESSION_USER.id);
   });
 
   it("returns 400 when limit query parameter is invalid", async () => {
@@ -320,18 +345,19 @@ describe("GET /api/checkins", () => {
     const response = await GET(request);
 
     expect(response.status).toBe(400);
-    expect(mocks.getProfileWithAssets).not.toHaveBeenCalled();
+    expect(mocks.getProfileIdForUser).not.toHaveBeenCalled();
   });
 
-  it("returns 200 with profileId and check-ins list", async () => {
+  it("ignores ?profileId query param and returns 200 scoped to session profile", async () => {
     const request = new NextRequest(
-      "http://localhost:3000/api/checkins?profileId=demo-marina-costa&limit=5",
+      "http://localhost:3000/api/checkins?profileId=other-user-profile&limit=5",
     );
     const response = await GET(request);
     const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(mocks.getProfileIdForUser).toHaveBeenCalledWith(SESSION_USER.id);
     expect(json.profileId).toBe("demo-marina-costa");
     expect(json.checkIns).toHaveLength(1);
     expect(mocks.listCheckIns).toHaveBeenCalledWith("demo-marina-costa", {
@@ -343,8 +369,9 @@ describe("GET /api/checkins", () => {
 describe("POST /api/checkins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getSessionUser.mockResolvedValue(SESSION_USER);
     mocks.isDatabaseConfigured.mockReturnValue(true);
-    mocks.getProfileWithAssets.mockResolvedValue(SAMPLE_PROFILE);
+    mocks.getProfileForUser.mockResolvedValue(SAMPLE_PROFILE);
     mocks.listCheckIns.mockResolvedValue([PREVIOUS_CHECKIN]);
     mocks.getMacroIndicators.mockResolvedValue(SAMPLE_MACRO);
     mocks.fetchEconomicNews.mockResolvedValue(SAMPLE_NEWS);
@@ -373,6 +400,20 @@ describe("POST /api/checkins", () => {
     }));
   });
 
+  it("returns 401 when user is unauthenticated", async () => {
+    mocks.getSessionUser.mockResolvedValue(null);
+
+    const response = await POST(
+      makeJsonPostRequest({
+        referenceMonth: "2026-11",
+        contributionCents: 100_000,
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.getProfileForUser).not.toHaveBeenCalled();
+  });
+
   it("returns 400 on malformed JSON", async () => {
     const request = new NextRequest("http://localhost:3000/api/checkins", {
       method: "POST",
@@ -387,7 +428,6 @@ describe("POST /api/checkins", () => {
   it("returns 400 on schema validation error", async () => {
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "demo-marina-costa",
         referenceMonth: "2026/11",
         contributionCents: -50,
       }),
@@ -398,17 +438,20 @@ describe("POST /api/checkins", () => {
     expect(json.details).toBeDefined();
   });
 
-  it("returns 400 when profileId contains only whitespace", async () => {
+  it("ignores client-supplied profileId in body and scopes check-in to session profile", async () => {
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "   ",
+        profileId: "other-user-profile",
         referenceMonth: "2026-11",
         contributionCents: 100_000,
+        skipAi: true,
+        skipNews: true,
       }),
     );
 
-    expect(response.status).toBe(400);
-    expect(mocks.getProfileWithAssets).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(mocks.getProfileForUser).toHaveBeenCalledWith(SESSION_USER.id);
+    expect(mocks.saveCheckIn.mock.calls[0][0].profileId).toBe(SAMPLE_PROFILE.id);
   });
 
   it("returns 503 when database is unconfigured and suggests stateless analyze route", async () => {
@@ -416,7 +459,6 @@ describe("POST /api/checkins", () => {
 
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "demo-marina-costa",
         referenceMonth: "2026-11",
         userNotes: "Recebi bônus este mês.",
         contributionCents: 100_000,
@@ -429,29 +471,28 @@ describe("POST /api/checkins", () => {
     expect(mocks.saveCheckIn).not.toHaveBeenCalled();
   });
 
-  it("returns 404 when investor profile is not found", async () => {
-    mocks.getProfileWithAssets.mockResolvedValue(null);
+  it("returns 404 when authenticated user has no investor profile", async () => {
+    mocks.getProfileForUser.mockResolvedValue(null);
 
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "missing-profile",
         referenceMonth: "2026-11",
         contributionCents: 100_000,
       }),
     );
 
     expect(response.status).toBe(404);
+    expect(mocks.getProfileForUser).toHaveBeenCalledWith(SESSION_USER.id);
   });
 
   it("returns 400 when neither request nor profile has portfolio positions", async () => {
-    mocks.getProfileWithAssets.mockResolvedValue({
+    mocks.getProfileForUser.mockResolvedValue({
       ...SAMPLE_PROFILE,
       assets: [],
     });
 
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "demo-marina-costa",
         referenceMonth: "2026-11",
         contributionCents: 100_000,
       }),
@@ -463,7 +504,6 @@ describe("POST /api/checkins", () => {
   it("orchestrates BCB, Motor, History, Firecrawl, LLM, saveCheckIn and returns 201 with updated evolution", async () => {
     const response = await POST(
       makeJsonPostRequest({
-        profileId: "demo-marina-costa",
         referenceMonth: "2026-11",
         userNotes: "Mantive aportes regulares em novembro.",
         contributionCents: 100_000,

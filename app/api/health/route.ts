@@ -1,8 +1,8 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { type NextRequest, type NextResponse } from "next/server";
+import { jsonOk } from "@/lib/api/responses";
 import { getPrisma, isDatabaseConfigured } from "@/lib/db/prisma";
 
 const DB_PING_TIMEOUT_MS = 3_000;
-const HEALTH_CACHE_CONTROL = "no-store";
 
 type HealthStatus = "ok" | "degraded";
 type AiProvider = "anthropic" | "google";
@@ -19,12 +19,18 @@ interface AiHealthCheck {
   provider: AiProvider | null;
 }
 
+interface AuthHealthCheck {
+  configured: boolean;
+  emailLoginConfigured: boolean;
+}
+
 interface HealthResponse {
   status: HealthStatus;
   timestamp: string;
   checks: {
     database: DatabaseHealthCheck;
     ai: AiHealthCheck;
+    auth: AuthHealthCheck;
     firecrawl: {
       configured: boolean;
     };
@@ -250,6 +256,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const database = await checkDatabaseHealth();
   const ai = checkAiHealth();
+  const auth: AuthHealthCheck = {
+    configured: Boolean(process.env.AUTH_SECRET?.trim()),
+    emailLoginConfigured: Boolean(process.env.AUTH_RESEND_KEY?.trim()),
+  };
   const firecrawl = {
     configured: Boolean(process.env.FIRECRAWL_API_KEY?.trim()),
   };
@@ -258,7 +268,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   };
 
   const status: HealthStatus =
-    database.connected && ai.configured ? "ok" : "degraded";
+    database.connected && ai.configured && auth.configured ? "ok" : "degraded";
   const httpStatus = strict && status !== "ok" ? 503 : 200;
 
   const payload: HealthResponse = {
@@ -267,15 +277,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     checks: {
       database,
       ai,
+      auth,
       firecrawl,
       bcb,
     },
   };
 
-  return NextResponse.json(payload, {
-    status: httpStatus,
-    headers: {
-      "Cache-Control": HEALTH_CACHE_CONTROL,
-    },
-  });
+  return jsonOk(payload, httpStatus);
 }
