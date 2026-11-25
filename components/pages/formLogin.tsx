@@ -7,12 +7,12 @@ export function FormLogin() {
       <h1 className="h1 text-center"> Acesso </h1>
       <div className="grid gap-6">
         <Input placeholder="Email" />
-        <Input type="password" placeholder="Senha" />
       </div>
-      <div className="grid gap-5 justify-center">
-        <Button> Login </Button>
-        <Button variant={"secondary"}> Sign In</Button>
-        <Button variant={"link"}> Esqueceu a Senha? </Button>
+      <div className="grid justify-items-center gap-5">
+        <Button size={"lg"}>
+          <h1> Gerar Código de Acesso </h1>
+        </Button>
+        <Button variant={"secondary"}> Sign up </Button>
       </div>
     </div>
   );

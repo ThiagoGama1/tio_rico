@@ -1,7 +1,7 @@
 import { FormLogin } from "@/components/pages/formLogin";
 import Image from "next/image";
 
-export function Login() {
+export default function Login() {
   return (
     <div className="flex min-h-svh">
       <section className="flex-1 hidden lg:flex items-center justify-center p-10 bg-(--green-3)">
@@ -13,7 +13,7 @@ export function Login() {
           src={"Logo-2.svg"}
         />
       </section>
-      <section className="flex flex-1  items-center justify-center p-6 sm:p-10">
+      <section className="flex flex-1 items-center justify-center p-6 sm:p-10">
         <FormLogin />
       </section>
     </div>
