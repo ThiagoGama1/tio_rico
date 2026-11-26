@@ -23,6 +23,9 @@ const ENV_KEYS = [
   "GOOGLE_GENERATIVE_AI_API_KEY",
   "GEMINI_API_KEY",
   "FIRECRAWL_API_KEY",
+  "AUTH_SECRET",
+  "AUTH_RESEND_KEY",
+  "AUTH_EMAIL_FROM",
 ] as const;
 
 type EnvSnapshot = Partial<Record<(typeof ENV_KEYS)[number], string>>;
@@ -74,6 +77,10 @@ describe("GET /api/health", () => {
         configured: false,
         provider: null,
       },
+      auth: {
+        configured: false,
+        emailLoginConfigured: false,
+      },
       firecrawl: {
         configured: false,
       },
@@ -96,9 +103,10 @@ describe("GET /api/health", () => {
     expect(body.status).toBe("degraded");
     expect(body.checks.database.connected).toBe(false);
     expect(body.checks.ai.configured).toBe(false);
+    expect(body.checks.auth.configured).toBe(false);
   });
 
-  it("returns 200 ok when DB ping succeeds and Anthropic AI key is configured without leaking secrets", async () => {
+  it("returns 200 ok when DB ping succeeds, Auth.js and Anthropic AI key are configured without leaking secrets", async () => {
     mockIsDatabaseConfigured.mockReturnValue(true);
     mockQueryRaw.mockResolvedValue([{ "?column?": 1 }]);
     process.env.DATABASE_URL =
@@ -106,6 +114,8 @@ describe("GET /api/health", () => {
     process.env.AI_PROVIDER = "anthropic";
     process.env.ANTHROPIC_API_KEY = "sk-ant-secret-key-12345";
     process.env.FIRECRAWL_API_KEY = "fc-secret-key-98765";
+    process.env.AUTH_SECRET = "super-secret-auth-token-value";
+    process.env.AUTH_RESEND_KEY = "re_secret_resend_token";
 
     const request = new NextRequest(
       "http://localhost:3000/api/health?strict=true",
@@ -128,6 +138,10 @@ describe("GET /api/health", () => {
       configured: true,
       provider: "anthropic",
     });
+    expect(body.checks.auth).toEqual({
+      configured: true,
+      emailLoginConfigured: true,
+    });
     expect(body.checks.firecrawl).toEqual({ configured: true });
     expect(body.checks.bcb).toEqual({ configured: true });
     expect(mockQueryRaw).toHaveBeenCalledTimes(1);
@@ -136,13 +150,16 @@ describe("GET /api/health", () => {
     expect(rawText).not.toContain("top-secret-db-pass");
     expect(rawText).not.toContain("sk-ant-secret-key-12345");
     expect(rawText).not.toContain("fc-secret-key-98765");
+    expect(rawText).not.toContain("super-secret-auth-token-value");
+    expect(rawText).not.toContain("re_secret_resend_token");
     expect(rawText).not.toContain("postgresql://");
   });
 
-  it("auto-detects Google AI provider via GEMINI_API_KEY alias and treats Firecrawl as optional", async () => {
+  it("auto-detects Google AI provider via GEMINI_API_KEY alias and treats Firecrawl and Resend as optional", async () => {
     mockIsDatabaseConfigured.mockReturnValue(true);
     mockQueryRaw.mockResolvedValue([{ "?column?": 1 }]);
     process.env.GEMINI_API_KEY = "gemini-secret-alias-key";
+    process.env.AUTH_SECRET = "auth-secret-present";
 
     const request = new NextRequest("http://localhost:3000/api/health");
     const response = await GET(request);
@@ -155,8 +172,36 @@ describe("GET /api/health", () => {
       configured: true,
       provider: "google",
     });
+    expect(body.checks.auth).toEqual({
+      configured: true,
+      emailLoginConfigured: false,
+    });
     expect(body.checks.firecrawl).toEqual({ configured: false });
     expect(rawText).not.toContain("gemini-secret-alias-key");
+    expect(rawText).not.toContain("auth-secret-present");
+  });
+
+  it("reports degraded when AUTH_SECRET is missing even if DB and AI are ready", async () => {
+    mockIsDatabaseConfigured.mockReturnValue(true);
+    mockQueryRaw.mockResolvedValue([{ "?column?": 1 }]);
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "AQ.valid-key";
+
+    const softRes = await GET(
+      new NextRequest("http://localhost:3000/api/health"),
+    );
+    const softBody = await softRes.json();
+
+    expect(softRes.status).toBe(200);
+    expect(softBody.status).toBe("degraded");
+    expect(softBody.checks.auth).toEqual({
+      configured: false,
+      emailLoginConfigured: false,
+    });
+
+    const strictRes = await GET(
+      new NextRequest("http://localhost:3000/api/health?strict=true"),
+    );
+    expect(strictRes.status).toBe(503);
   });
 
   it("reports degraded when explicit AI_PROVIDER lacks its matching key or is invalid", async () => {

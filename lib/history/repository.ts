@@ -366,6 +366,33 @@ export async function getCheckInById(
 }
 
 /**
+ * Loads a single check-in by ID only when it belongs to `profileId`
+ * (prevents IDOR across investor profiles).
+ */
+export async function getCheckInByIdForProfile(
+  id: string,
+  profileId: string,
+): Promise<CheckInDetail | null> {
+  const trimmedId = id.trim();
+  const trimmedProfileId = profileId.trim();
+  if (!trimmedId || !trimmedProfileId) {
+    return null;
+  }
+
+  const prisma = getPrisma();
+  const row = await prisma.checkIn.findFirst({
+    where: { id: trimmedId, profileId: trimmedProfileId },
+    include: {
+      positions: {
+        orderBy: [{ amountCents: "desc" }, { assetLabel: "asc" }],
+      },
+    },
+  });
+
+  return row ? hydrateCheckIn(row) : null;
+}
+
+/**
  * Atomically persists a `CheckIn` and its `CheckInPosition[]` rows inside a
  * Prisma transaction, optionally synchronizing `PortfolioAsset` rows for the
  * investor profile.

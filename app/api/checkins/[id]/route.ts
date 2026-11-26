@@ -1,11 +1,17 @@
-import { NextResponse, type NextRequest } from "next/server";
+import type { NextRequest, NextResponse } from "next/server";
+import {
+  databaseNotConfigured,
+  jsonError,
+  jsonOk,
+  unauthorized,
+} from "@/lib/api/responses";
+import { getSessionUser } from "@/lib/auth/session";
 import { isDatabaseConfigured } from "@/lib/db/prisma";
 import {
   RepositoryHydrationError,
-  getCheckInById,
+  getCheckInByIdForProfile,
 } from "@/lib/history/repository";
-
-const NO_STORE_HEADERS = { "Cache-Control": "no-store" } as const;
+import { getProfileIdForUser } from "@/lib/profile/repository";
 
 export async function GET(
   _request: NextRequest,
@@ -16,48 +22,36 @@ export async function GET(
   const { id } = await context.params;
   const trimmedId = id.trim();
 
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json(
-      {
-        error:
-          "Banco de dados não configurado. Defina DATABASE_URL para consultar check-ins.",
-      },
-      { status: 503, headers: NO_STORE_HEADERS },
-    );
+  const user = await getSessionUser();
+  if (!user) {
+    return unauthorized();
   }
 
   if (!trimmedId) {
-    return NextResponse.json(
-      { error: "Identificador de check-in inválido." },
-      { status: 400, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(400, "Identificador de check-in inválido.");
+  }
+
+  if (!isDatabaseConfigured()) {
+    return databaseNotConfigured("consultar check-ins");
   }
 
   try {
-    const checkIn = await getCheckInById(trimmedId);
-
-    if (!checkIn) {
-      return NextResponse.json(
-        { error: "Check-in não encontrado." },
-        { status: 404, headers: NO_STORE_HEADERS },
-      );
+    const profileId = await getProfileIdForUser(user.id);
+    if (!profileId) {
+      return jsonError(404, "Check-in não encontrado.");
     }
 
-    return NextResponse.json(checkIn, {
-      status: 200,
-      headers: NO_STORE_HEADERS,
-    });
+    const checkIn = await getCheckInByIdForProfile(trimmedId, profileId);
+    if (!checkIn) {
+      return jsonError(404, "Check-in não encontrado.");
+    }
+
+    return jsonOk(checkIn);
   } catch (error) {
     if (error instanceof RepositoryHydrationError) {
-      return NextResponse.json(
-        { error: "Dados do check-in inconsistentes no banco de dados." },
-        { status: 500, headers: NO_STORE_HEADERS },
-      );
+      return jsonError(500, "Dados do check-in inconsistentes no banco de dados.");
     }
 
-    return NextResponse.json(
-      { error: "Falha ao consultar o check-in no banco de dados." },
-      { status: 500, headers: NO_STORE_HEADERS },
-    );
+    return jsonError(500, "Falha ao consultar o check-in no banco de dados.");
   }
 }
