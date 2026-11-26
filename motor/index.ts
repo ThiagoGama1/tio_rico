@@ -10,3 +10,4 @@ export * from "./aporte";
 export * from "./rendimento";
 export * from "./diagnostico";
 export * from "./perfil";
+export * from "./projecao";
