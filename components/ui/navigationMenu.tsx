@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
 const navigationItems = [
-  { href: "/", label: "Visão geral" },
+  { href: "/overview", label: "Visão geral" },
   { href: "/carteira", label: "Carteira" },
   { href: "/check-ins", label: "Check-ins" },
   { href: "/alocacao-alvo", label: "Alocação alvo" },
@@ -23,7 +23,7 @@ export function NavigationMenu() {
   return (
     <aside className="sticky top-0 flex h-dvh w-72 shrink-0 flex-col bg-background px-10 py-18">
       <Link
-        href="/"
+        href="/overview"
         className="font-k2d text-[2rem] leading-none font-bold tracking-tight text-(--green-2)"
       >
         TIO RICO
