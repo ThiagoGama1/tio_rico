@@ -321,6 +321,104 @@ describe("getMacroIndicators", () => {
     expect(result.cdiAnnual).toBe(14.65);
   });
 
+  // The BCB CDN (Azure Front Door) was seen answering plain GETs with
+  // "304 Not Modified" and no body, stuck on one URL path (ultimos/12 of 433,
+  // later ultimos/12 of 432). A different path (ultimos/13) works.
+  function cdnNotModified(): Response {
+    return new Response(null, { status: 304 });
+  }
+
+  function countFromUrl(url: string): number {
+    return Number(/\/ultimos\/(\d+)/.exec(url)?.[1]);
+  }
+
+  it("recovers live data when the CDN answers 304 with an empty body, asking for one point more", async () => {
+    const THIRTEEN_IPCA_MONTHLY_ROWS: BcbRow[] = [
+      { data: "01/04/2025", valor: "0.99" },
+      ...TWELVE_IPCA_MONTHLY_ROWS,
+    ];
+
+    const fetchMock = createStandardBcbFetch({
+      [BCB_SERIES.SELIC_META]: (url) =>
+        countFromUrl(url) === 1
+          ? cdnNotModified()
+          : jsonResponse([
+              { data: "06/05/2026", valor: "15.00" },
+              { data: "07/05/2026", valor: "14.75" },
+            ]),
+      [BCB_SERIES.IPCA_MONTHLY]: (url) =>
+        countFromUrl(url) === 12
+          ? cdnNotModified()
+          : jsonResponse(THIRTEEN_IPCA_MONTHLY_ROWS),
+    });
+
+    const result = await getMacroIndicators({
+      fetchImpl: fetchMock,
+      retryDelayMs: 0,
+      skipDb: true,
+    });
+
+    expect(result.source).toBe("bcb_sgs");
+    expect(result.isStale).toBe(false);
+    // the extra (older) point is dropped: still the latest value / 12 months
+    expect(result.selicMetaAnnual).toBe(14.75);
+    expect(result.selicDate).toBe("2026-05-07");
+    expect(result.ipcaHistory).toHaveLength(12);
+    expect(result.ipcaHistory[0]).toEqual({ date: "2025-05-01", value: 0.4 });
+    expect(result.ipcaMonthly).toBe(0.45);
+
+    const calledUrls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(calledUrls).toContain(buildBcbSeriesUrl(BCB_SERIES.SELIC_META, 1));
+    expect(calledUrls).toContain(buildBcbSeriesUrl(BCB_SERIES.SELIC_META, 2));
+    expect(calledUrls).toContain(buildBcbSeriesUrl(BCB_SERIES.IPCA_MONTHLY, 12));
+    expect(calledUrls).toContain(buildBcbSeriesUrl(BCB_SERIES.IPCA_MONTHLY, 13));
+    // a 304 is not retried on the same URL: 5 series + 2 alternate paths
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init?.cache).toBe("no-store");
+    }
+  });
+
+  it("treats a 200 with an empty body like the 304 and tries another path", async () => {
+    const fetchMock = createStandardBcbFetch({
+      [BCB_SERIES.CDI_ANNUAL]: (url) =>
+        countFromUrl(url) === 1
+          ? new Response("", { status: 200 })
+          : jsonResponse([
+              { data: "07/05/2026", valor: "14.60" },
+              { data: "08/05/2026", valor: "14.65" },
+            ]),
+    });
+
+    const result = await getMacroIndicators({
+      fetchImpl: fetchMock,
+      retryDelayMs: 0,
+      skipDb: true,
+    });
+
+    expect(result.source).toBe("bcb_sgs");
+    expect(result.cdiAnnual).toBe(14.65);
+  });
+
+  it("falls back when every CDN path keeps answering 304", async () => {
+    const fetchMock = createStandardBcbFetch({
+      [BCB_SERIES.SELIC_META]: () => cdnNotModified(),
+    });
+
+    const result = await getMacroIndicators({
+      fetchImpl: fetchMock,
+      retryDelayMs: 0,
+      skipDb: true,
+    });
+
+    expect(result.isStale).toBe(true);
+    const selicCounts = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes(`bcdata.sgs.${BCB_SERIES.SELIC_META}/`))
+      .map(countFromUrl);
+    expect(selicCounts).toEqual([1, 2, 3]);
+  });
+
   it("returns validated static fallback with isStale=true on total BCB failure", async () => {
     const failingFetch = vi.fn<typeof fetch>(() =>
       Promise.reject(new TypeError("ECONNREFUSED")),
