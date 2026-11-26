@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { NavigationMenu } from "@/components/ui/navigationMenu";
 import { IBM_Plex_Sans, Intel_One_Mono, K2D } from "next/font/google";
 import "./globals.css";
 
