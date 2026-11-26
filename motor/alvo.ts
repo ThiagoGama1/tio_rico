@@ -1,4 +1,5 @@
 import { Alocacao, Classe, Perfil, TipoPerfil } from "./tipos";
+import { somarAlocacao } from "./alocacao";
 
 export const ALVOS_POR_PERFIL: Record<TipoPerfil, Alocacao> = {
     conservador: {
@@ -30,18 +31,18 @@ export const ALVOS_POR_PERFIL: Record<TipoPerfil, Alocacao> = {
         caixa: 5,
     },
 };
-export function alocacaoAlvo(perfil: Perfil): Alocacao {
-    const base = ALVOS_POR_PERFIL[perfil.tipo];
 
+//tira as classes excluidas e reescala o que sobrou para somar 100.
+//classes com valor 0 ou negativo tambem saem. Devolve {} se nao sobrar nada.
+export function excluirEReescalar(base: Alocacao, excluir: Classe[]): Alocacao {
     const restantes: Alocacao = {};
-    let soma = 0;
     for (const [classe, valor] of Object.entries(base)) {
-        if (perfil.excluir.includes(classe as Classe)) {
+        if (excluir.includes(classe as Classe) || !(valor > 0)) {
             continue;
         }
         restantes[classe as Classe] = valor;
-        soma += valor;
     }
+    const soma = somarAlocacao(restantes);
     if (soma === 0) {
         return {};
     }
@@ -50,4 +51,17 @@ export function alocacaoAlvo(perfil: Perfil): Alocacao {
         resultado[classe as Classe] = valor / soma * 100;
     }
     return resultado;
+}
+
+//alvo padrao do perfil, sem as classes excluidas
+export function alocacaoAlvo(perfil: Perfil): Alocacao {
+    return excluirEReescalar(ALVOS_POR_PERFIL[perfil.tipo], perfil.excluir);
+}
+
+//alvo usado no diagnostico: o salvo pelo usuario; se vier vazio, o padrao do perfil.
+//nos dois casos as classes excluidas saem e o resto soma 100.
+export function resolverAlvo(alvoSalvo: Alocacao, perfil: Perfil): Alocacao {
+    const temAlvoSalvo = somarAlocacao(alvoSalvo) > 0;
+    const base = temAlvoSalvo ? alvoSalvo : ALVOS_POR_PERFIL[perfil.tipo];
+    return excluirEReescalar(base, perfil.excluir);
 }

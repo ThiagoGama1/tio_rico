@@ -1,5 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { calcularAlocacao } from "./alocacao";
+import {
+  ORDEM_CLASSES,
+  calcularAlocacao,
+  somarAlocacao,
+  valoresPorClasse,
+} from "./alocacao";
+
+describe("valoresPorClasse", () => {
+  it("soma os centavos por classe", () => {
+    const carteira = [
+      { nome: "A", classe: "acoes" as const, valorCentavos: 100 },
+      { nome: "B", classe: "acoes" as const, valorCentavos: 250 },
+      { nome: "C", classe: "fiis" as const, valorCentavos: 50 },
+    ];
+    expect(valoresPorClasse(carteira)).toEqual({ acoes: 350, fiis: 50 });
+  });
+
+  it("trata valor negativo como zero", () => {
+    const carteira = [{ nome: "X", classe: "caixa" as const, valorCentavos: -10 }];
+    expect(valoresPorClasse(carteira)).toEqual({ caixa: 0 });
+  });
+});
+
+describe("somarAlocacao", () => {
+  it("soma os valores e ignora ausentes", () => {
+    expect(somarAlocacao({ acoes: 10, fiis: 5 })).toBe(15);
+    expect(somarAlocacao({})).toBe(0);
+  });
+});
+
+describe("ORDEM_CLASSES", () => {
+  it("lista as 9 classes, comecando pela renda fixa pos", () => {
+    expect(ORDEM_CLASSES).toHaveLength(9);
+    expect(ORDEM_CLASSES[0]).toBe("renda_fixa_pos");
+  });
+});
 
 describe("calcularAlocacao", () => {
   it("devolve objeto vazio para carteira vazia", () => {
