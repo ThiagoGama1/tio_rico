@@ -58,10 +58,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }),
       );
   } catch {
-    return NextResponse.json(
-      { error: "Falha no motor de cálculo ao processar a carteira." },
-      { status: 500, headers: { "Cache-Control": "no-store" } },
-    );
+    return jsonError(500, "Falha no motor de cálculo ao processar a carteira.");
   }
 
   const assetClassSet = new Set<AssetClass>();
