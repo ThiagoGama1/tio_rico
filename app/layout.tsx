@@ -35,7 +35,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full">
         <div className="flex min-h-dvh">
-          <NavigationMenu />
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </body>
