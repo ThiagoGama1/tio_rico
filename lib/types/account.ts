@@ -29,6 +29,12 @@ export const EmailLoginRequestSchema = z.object({
 });
 export type EmailLoginRequest = z.infer<typeof EmailLoginRequestSchema>;
 
+export const EmailLoginCodeSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  code: z.string().trim().regex(/^\d{6}$/, "Código de verificação inválido."),
+});
+export type EmailLoginCode = z.infer<typeof EmailLoginCodeSchema>;
+
 // =============================================================================
 // Perfil do investidor
 // =============================================================================
