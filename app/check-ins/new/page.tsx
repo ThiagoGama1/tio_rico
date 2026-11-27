@@ -48,11 +48,8 @@ function UnavailableCheckIn({ message }: { message: string }) {
 
 export default async function NewCheckInPage() {
   // Auth.js usa aleatoriedade criptográfica ao validar a sessão; adia isso para a
-
   // requisição em vez de rodar no prerender (#63).
-
   await connection();
-
   const user = await getSessionUser();
   if (!user) {
     redirect("/");
