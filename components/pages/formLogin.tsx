@@ -74,7 +74,7 @@ export function FormLogin() {
         throw new Error("Não foi possível confirmar a sessão.");
       }
 
-      router.push(session.profileId ? "/" : "/onboarding");
+      router.replace(session.profileId ? "/overview" : "/onboarding");
       router.refresh();
     } catch (requestError) {
       setError(

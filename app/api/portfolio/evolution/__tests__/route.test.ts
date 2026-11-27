@@ -170,6 +170,7 @@ describe("GET /api/portfolio/evolution", () => {
       order: "asc",
     });
     expect(json.profile.id).toBe("profile-1");
+    expect(json.checkIns).toEqual([SAMPLE_CHECKIN]);
     expect(json.checkInsCount).toBe(1);
     expect(json.evolution.totalCheckIns).toBe(1);
     expect(json.evolution.latestTotalCents).toBe(1_000_000);
