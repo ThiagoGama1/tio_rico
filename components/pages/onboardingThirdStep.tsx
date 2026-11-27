@@ -1,10 +1,16 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { parseReaisParaCentavos } from "@/lib/format/moeda";
+import {
+  apagarRascunho,
+  lerRascunho,
+  salvarRascunho,
+} from "@/lib/onboarding/rascunho";
 import { cn } from "@/lib/utils";
 import type {
   AssetClass,
@@ -12,21 +18,16 @@ import type {
   TargetAllocation,
 } from "@/lib/types/domain";
 
-const ONBOARDING_DRAFT_KEY = "tio-rico:onboarding-draft";
+// Mesmas classes de erro do componente Input (aria-invalid).
+const INVALID_FIELD_CLASSES =
+  "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20";
+
+const percentFormatter = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 
 type AllocationField = {
   assetClass: AssetClass;
   label: string;
   description: string;
-};
-
-type OnboardingDraft = {
-  name?: unknown;
-  email?: unknown;
-  riskProfile?: unknown;
-  horizonMonths?: unknown;
-  monthlyIncome?: unknown;
-  goals?: unknown;
 };
 
 const ALLOCATION_FIELDS: AllocationField[] = [
@@ -143,30 +144,13 @@ function parsePercentage(value: string) {
   return Number.isFinite(percentage) ? percentage : Number.NaN;
 }
 
-function parseCurrencyToCents(value: unknown) {
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim().replace(/[^\d,.-]/g, "");
-  if (!normalized) return null;
-
-  const decimalValue = normalized.includes(",")
-    ? normalized.replace(/\./g, "").replace(",", ".")
-    : normalized;
-  const amount = Number(decimalValue);
-
-  return Number.isFinite(amount) && amount >= 0
-    ? Math.round(amount * 100)
-    : null;
-}
-
-function getDraft() {
-  try {
-    return JSON.parse(
-      sessionStorage.getItem(ONBOARDING_DRAFT_KEY) ?? "{}",
-    ) as OnboardingDraft;
-  } catch {
-    return {};
-  }
+/** Mensagem de erro do campo de percentual, ou "" se válido (#53). */
+function percentageError(value: string) {
+  const percentage = parsePercentage(value);
+  if (!Number.isFinite(percentage)) return "Valor inválido";
+  if (percentage < 0) return "Não pode ser negativo";
+  if (percentage > 100) return "Máximo de 100%";
+  return "";
 }
 
 function getInitialAllocation() {
@@ -181,14 +165,28 @@ export function OnboardingThirdStep() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const total = useMemo(
-    () =>
-      Object.values(allocation).reduce(
-        (sum, value) => sum + (Number.isFinite(parsePercentage(value)) ? parsePercentage(value) : 0),
-        0,
-      ),
-    [allocation],
-  );
+  // Voltar para esta etapa (ou retomar depois) restaura os percentuais digitados (#64 / #65).
+  useEffect(() => {
+    const saved = lerRascunho().allocationForm;
+    if (!saved || typeof saved !== "object") return;
+    const restored = getInitialAllocation();
+    for (const { assetClass } of ALLOCATION_FIELDS) {
+      const value = (saved as Record<string, unknown>)[assetClass];
+      if (typeof value === "string") restored[assetClass] = value;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage só existe no cliente
+    setAllocation(restored);
+  }, []);
+
+  // Soma só os campos válidos; os inválidos ficam marcados no próprio campo (#53).
+  const total = useMemo(() => {
+    const sum = Object.values(allocation).reduce(
+      (acc, value) => (percentageError(value) ? acc : acc + parsePercentage(value)),
+      0,
+    );
+    return Math.round(sum * 100) / 100;
+  }, [allocation]);
+  const isOverLimit = total > 100;
 
   function createTargetAllocation() {
     const targetAllocation: TargetAllocation = {};
@@ -217,7 +215,7 @@ export function OnboardingThirdStep() {
     const targetAllocation = createTargetAllocation();
     if (!targetAllocation) return;
 
-    const draft = getDraft();
+    const draft = lerRascunho();
     const horizonMonths = Number(draft.horizonMonths);
     const isValidRiskProfile = ["conservador", "moderado", "arrojado"].includes(
       String(draft.riskProfile),
@@ -246,7 +244,10 @@ export function OnboardingThirdStep() {
           : null,
       riskProfile: draft.riskProfile as RiskProfile,
       horizonMonths,
-      monthlyIncomeCents: parseCurrencyToCents(draft.monthlyIncome),
+      monthlyIncomeCents:
+        typeof draft.monthlyIncome === "string"
+          ? parseReaisParaCentavos(draft.monthlyIncome)
+          : null,
       goals: Array.isArray(draft.goals) ? draft.goals : [],
       targetAllocation,
     };
@@ -267,13 +268,18 @@ export function OnboardingThirdStep() {
       }
 
       if (!response.ok) {
+        // a API responde { error: "mensagem" } (string), não { error: { message } } (#65)
         const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: unknown;
         } | null;
-        throw new Error(payload?.error?.message ?? "Não foi possível salvar seu perfil.");
+        throw new Error(
+          typeof payload?.error === "string" && payload.error
+            ? payload.error
+            : "Não foi possível salvar seu perfil.",
+        );
       }
 
-      sessionStorage.removeItem(ONBOARDING_DRAFT_KEY);
+      apagarRascunho();
       router.replace("/overview");
       router.refresh();
     } catch (caughtError) {
@@ -292,8 +298,19 @@ export function OnboardingThirdStep() {
     void saveProfile();
   }
 
+  // "Terminar depois" guarda o rascunho e sai sem gravar no banco, igual à etapa 2 (#65).
+  function finishLater() {
+    salvarRascunho({ allocationForm: allocation });
+    router.push("/overview");
+  }
+
+  function goBack() {
+    salvarRascunho({ allocationForm: allocation });
+    router.push("/onboarding/metas");
+  }
+
   return (
-    <main className="min-h-dvh bg-background lg:grid lg:grid-cols-[minmax(20rem,28rem)_1fr]">
+    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[minmax(20rem,28rem)_1fr]">
       <aside className="hidden min-h-dvh flex-col bg-(--green-2) px-10 py-12 text-white lg:flex">
         <div>
           <p className="font-k2d text-[1.7rem] leading-none font-bold tracking-tight">
@@ -366,9 +383,18 @@ export function OnboardingThirdStep() {
               <p className="font-intel text-xs tracking-[0.08em] text-muted uppercase">
                 Definido
               </p>
-              <output className="mt-1 block font-k2d text-2xl font-semibold text-(--green-1)">
-                {Number.isFinite(total) ? `${total}%` : "—"}
+              <output
+                aria-live="polite"
+                className={cn(
+                  "mt-1 block font-k2d text-2xl font-semibold",
+                  isOverLimit ? "text-destructive" : "text-(--green-1)",
+                )}
+              >
+                {`${percentFormatter.format(total)}%`}
               </output>
+              {isOverLimit ? (
+                <p className="mt-1 font-k2d text-sm text-destructive">Acima de 100%</p>
+              ) : null}
             </div>
           </Card>
 
@@ -384,6 +410,7 @@ export function OnboardingThirdStep() {
               <div className="mt-5 grid gap-x-12 gap-y-6 border-t pt-5 sm:grid-cols-2">
                 {ALLOCATION_FIELDS.map(({ assetClass, label, description }) => {
                   const inputId = `allocation-${assetClass}`;
+                  const fieldError = percentageError(allocation[assetClass]);
 
                   return (
                     <div key={assetClass} className="grid justify-items-start gap-2">
@@ -391,7 +418,11 @@ export function OnboardingThirdStep() {
                       <div className="relative">
                         <input
                           aria-describedby={`${inputId}-description`}
-                          className="h-12 w-20 rounded-md border border-input bg-transparent px-3 pr-7 font-k2d text-base text-foreground outline-none transition focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20"
+                          aria-invalid={fieldError ? true : undefined}
+                          className={cn(
+                            "h-12 w-20 rounded-md border border-input bg-transparent px-3 pr-7 font-k2d text-base text-foreground outline-none transition focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20",
+                            INVALID_FIELD_CLASSES,
+                          )}
                           id={inputId}
                           inputMode="decimal"
                           min="0"
@@ -411,10 +442,11 @@ export function OnboardingThirdStep() {
                         </span>
                       </div>
                       <p
-                        className="font-k2d text-sm text-muted"
+                        aria-live="polite"
+                        className={cn("font-k2d text-sm", fieldError ? "text-destructive" : "text-muted")}
                         id={`${inputId}-description`}
                       >
-                        {description}
+                        {fieldError || description}
                       </p>
                     </div>
                   );
@@ -431,14 +463,24 @@ export function OnboardingThirdStep() {
                   {error}
                 </p>
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <Button
+                  className="w-full sm:w-32"
+                  disabled={isSubmitting}
+                  size="lg"
+                  type="button"
+                  variant="secondary"
+                  onClick={goBack}
+                >
+                  Voltar
+                </Button>
                 <Button
                   className="w-full sm:w-62"
                   disabled={isSubmitting}
                   size="lg"
                   type="button"
-                  variant="outline"
-                  onClick={() => void saveProfile()}
+                  variant="secondary"
+                  onClick={finishLater}
                 >
                   Terminar configuração depois
                 </Button>
@@ -450,6 +492,6 @@ export function OnboardingThirdStep() {
           </form>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

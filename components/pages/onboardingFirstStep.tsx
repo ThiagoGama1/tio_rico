@@ -1,12 +1,18 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  mascararReais,
+  normalizarCampoReais,
+  parseReaisParaCentavos,
+} from "@/lib/format/moeda";
+import { lerRascunho, salvarRascunho } from "@/lib/onboarding/rascunho";
 import { cn } from "@/lib/utils";
-import type { RiskProfile } from "@/lib/types/domain";
+import { RISK_PROFILES, type RiskProfile } from "@/lib/types/domain";
 
 type OnboardingFirstStepProps = {
   email: string;
@@ -36,7 +42,9 @@ const RISK_OPTIONS: RiskOption[] = [
   },
 ];
 
-const ONBOARDING_DRAFT_KEY = "tio-rico:onboarding-draft";
+// Mesmas classes de erro do componente Input (aria-invalid).
+const INVALID_FIELD_CLASSES =
+  "aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20";
 
 function StepIndicator({
   number,
@@ -83,40 +91,77 @@ function StepIndicator({
   );
 }
 
-function FieldLabel({ children }: { children: string }) {
+function FieldLabel({ children, htmlFor }: { children: string; htmlFor: string }) {
   return (
-    <label className="font-intel text-xs tracking-[0.08em] text-muted uppercase">
+    <label
+      className="font-intel text-xs tracking-[0.08em] text-muted uppercase"
+      htmlFor={htmlFor}
+    >
       {children}
     </label>
   );
 }
 
+function isRiskProfile(value: unknown): value is RiskProfile {
+  return RISK_PROFILES.includes(value as RiskProfile);
+}
+
 export function OnboardingFirstStep({ email }: OnboardingFirstStepProps) {
   const router = useRouter();
+  const nameRef = useRef<HTMLInputElement>(null);
+  const incomeRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [riskProfile, setRiskProfile] = useState<RiskProfile>("moderado");
   const [horizonMonths, setHorizonMonths] = useState("60");
   const [monthlyIncome, setMonthlyIncome] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [incomeError, setIncomeError] = useState("");
+
+  // Voltar para esta etapa (ou retomar depois de "Terminar depois") restaura o rascunho (#64).
+  useEffect(() => {
+    const draft = lerRascunho();
+    /* eslint-disable react-hooks/set-state-in-effect -- sessionStorage só existe no cliente */
+    if (typeof draft.name === "string") setName(draft.name);
+    if (isRiskProfile(draft.riskProfile)) setRiskProfile(draft.riskProfile);
+    if (Number.isInteger(draft.horizonMonths)) setHorizonMonths(String(draft.horizonMonths));
+    if (typeof draft.monthlyIncome === "string") setMonthlyIncome(draft.monthlyIncome);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
 
   function continueToGoals(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    sessionStorage.setItem(
-      ONBOARDING_DRAFT_KEY,
-      JSON.stringify({
-        name: name.trim(),
-        email,
-        riskProfile,
-        horizonMonths: Number(horizonMonths),
-        monthlyIncome,
-      }),
-    );
+    const trimmedName = name.trim();
+    const nextNameError = trimmedName ? "" : "Informe seu nome";
+    const nextIncomeError =
+      monthlyIncome.trim() && parseReaisParaCentavos(monthlyIncome) === null
+        ? "Valor inválido"
+        : "";
+    setNameError(nextNameError);
+    setIncomeError(nextIncomeError);
+
+    if (nextNameError) {
+      nameRef.current?.focus();
+      return;
+    }
+    if (nextIncomeError) {
+      incomeRef.current?.focus();
+      return;
+    }
+
+    salvarRascunho({
+      name: trimmedName,
+      email,
+      riskProfile,
+      horizonMonths: Number(horizonMonths),
+      monthlyIncome,
+    });
 
     router.push("/onboarding/metas");
   }
 
   return (
-    <main className="min-h-dvh bg-background lg:grid lg:grid-cols-[minmax(20rem,28rem)_1fr]">
+    <div className="min-h-dvh bg-background lg:grid lg:grid-cols-[minmax(20rem,28rem)_1fr]">
       <aside className="hidden min-h-dvh flex-col bg-(--green-2) px-10 py-12 text-white lg:flex">
         <div>
           <p className="font-k2d text-[1.7rem] leading-none font-bold tracking-tight">
@@ -204,21 +249,40 @@ export function OnboardingFirstStep({ email }: OnboardingFirstStepProps) {
               </p>
               <div className="mt-5 grid gap-5 border-t pt-5 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <FieldLabel>Nome</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-name">Nome</FieldLabel>
                   <input
-                    className="h-12 w-full rounded-md border border-input bg-transparent px-4 font-k2d text-base text-foreground outline-none transition focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20"
+                    ref={nameRef}
+                    className={cn(
+                      "h-12 w-full rounded-md border border-input bg-transparent px-4 font-k2d text-base text-foreground outline-none transition focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20",
+                      INVALID_FIELD_CLASSES,
+                    )}
+                    id="onboarding-name"
                     name="name"
                     placeholder="Como gostaria de ser chamado?"
                     autoComplete="name"
                     value={name}
-                    onChange={(event) => setName(event.target.value)}
+                    aria-invalid={nameError ? true : undefined}
+                    aria-describedby="onboarding-name-help"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setNameError("");
+                    }}
                     required
                   />
-                  <p className="font-k2d text-sm text-muted">Obrigatório</p>
+                  <p
+                    aria-live="polite"
+                    className={cn("font-k2d text-sm", nameError ? "text-destructive" : "text-muted")}
+                    id="onboarding-name-help"
+                  >
+                    {nameError || "Obrigatório"}
+                  </p>
                 </div>
                 <div className="grid gap-2">
-                  <FieldLabel>E-mail</FieldLabel>
-                  <output className="flex h-12 items-center rounded-md border border-input bg-muted/5 px-4 font-k2d text-base text-foreground">
+                  <FieldLabel htmlFor="onboarding-email">E-mail</FieldLabel>
+                  <output
+                    className="flex h-12 items-center rounded-md border border-input bg-muted/5 px-4 font-k2d text-base text-foreground"
+                    id="onboarding-email"
+                  >
                     {email || "E-mail da sua conta"}
                   </output>
                   <p className="font-k2d text-sm text-muted">
@@ -283,10 +347,11 @@ export function OnboardingFirstStep({ email }: OnboardingFirstStepProps) {
               </h2>
               <div className="mt-5 grid gap-5 border-t pt-5 sm:grid-cols-2">
                 <div className="grid gap-2">
-                  <FieldLabel>Horizonte de investimento</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-horizon">Horizonte de investimento</FieldLabel>
                   <div className="relative max-w-48">
                     <input
                       className="h-12 w-full rounded-md border border-input bg-transparent py-2 pr-16 pl-4 font-k2d text-base text-foreground outline-none transition focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20"
+                      id="onboarding-horizon"
                       name="horizonMonths"
                       type="number"
                       min="1"
@@ -304,18 +369,33 @@ export function OnboardingFirstStep({ email }: OnboardingFirstStepProps) {
                   </p>
                 </div>
                 <div className="grid gap-2">
-                  <FieldLabel>Renda mensal</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-income">Renda mensal</FieldLabel>
                   <input
-                    className="h-12 w-full max-w-56 rounded-md border border-input bg-transparent px-4 font-k2d text-base text-foreground outline-none transition placeholder:text-muted focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20"
+                    ref={incomeRef}
+                    className={cn(
+                      "h-12 w-full max-w-56 rounded-md border border-input bg-transparent px-4 font-k2d text-base text-foreground outline-none transition placeholder:text-muted focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/20",
+                      INVALID_FIELD_CLASSES,
+                    )}
+                    id="onboarding-income"
                     name="monthlyIncome"
                     type="text"
                     inputMode="decimal"
                     placeholder="Opcional"
                     value={monthlyIncome}
-                    onChange={(event) => setMonthlyIncome(event.target.value)}
+                    aria-invalid={incomeError ? true : undefined}
+                    aria-describedby="onboarding-income-help"
+                    onChange={(event) => {
+                      setMonthlyIncome(mascararReais(event.target.value));
+                      setIncomeError("");
+                    }}
+                    onBlur={() => setMonthlyIncome((current) => normalizarCampoReais(current))}
                   />
-                  <p className="font-k2d text-sm text-muted">
-                    Usada apenas como contexto
+                  <p
+                    aria-live="polite"
+                    className={cn("font-k2d text-sm", incomeError ? "text-destructive" : "text-muted")}
+                    id="onboarding-income-help"
+                  >
+                    {incomeError || "Usada apenas como contexto"}
                   </p>
                 </div>
               </div>
@@ -332,6 +412,6 @@ export function OnboardingFirstStep({ email }: OnboardingFirstStepProps) {
           </form>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
