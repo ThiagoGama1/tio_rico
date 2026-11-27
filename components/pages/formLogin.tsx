@@ -117,6 +117,9 @@ export function FormLogin() {
           <p aria-live="polite" className="text-center text-sm text-(--green-2)">
             {message}
           </p>
+          <p className="text-center font-k2d text-sm text-muted">
+            Não chegou? Confira o spam.
+          </p>
           <Input
             variant="square"
             placeholder="Código de verificação"
