@@ -231,13 +231,19 @@ export default async function CheckInsPage() {
           <ul className="mt-6 space-y-3" aria-label="Lista de check-ins">
             {checkIns.map((checkIn) => (
               <li key={checkIn.id}>
-                <DataLine
-                  variant="compact"
-                  className="min-h-[4.5rem]"
-                  title={monthLabel(checkIn.referenceMonth)}
-                  detail={`Registrado em ${dateLabel(checkIn.createdAt)} · Aporte de ${formatCentsBRL(checkIn.contributionCents)}`}
-                  value={formatCentsBRL(checkIn.totalValueCents)}
-                />
+                <Link
+                  href={`/check-ins/${checkIn.id}`}
+                  className="block rounded-lg outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Ver detalhes do check-in de ${monthLabel(checkIn.referenceMonth)}`}
+                >
+                  <DataLine
+                    variant="compact"
+                    className="min-h-[4.5rem]"
+                    title={monthLabel(checkIn.referenceMonth)}
+                    detail={`Registrado em ${dateLabel(checkIn.createdAt)} · Aporte de ${formatCentsBRL(checkIn.contributionCents)}`}
+                    value={formatCentsBRL(checkIn.totalValueCents)}
+                  />
+                </Link>
               </li>
             ))}
           </ul>
