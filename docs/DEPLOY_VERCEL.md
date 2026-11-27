@@ -80,7 +80,7 @@ Configure as variáveis em **Vercel Dashboard → Settings → Environment Varia
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Sim (se Google) | Production, Preview, Development | `AIza...` | Chave privada da API Google Gemini. Obrigatória quando `AI_PROVIDER="google"` (o alias `GEMINI_API_KEY` também é aceito). |
 | `FIRECRAWL_API_KEY` | Opcional | Production, Preview, Development | `fc-...` | Coleta de notícias econômicas brasileiras. Se ausente, a análise continua normalmente em modo degradado sem notícias. |
 | `AUTH_SECRET` | Sim | Production, Preview, Development | Gerado por `npx auth secret` | Segredo usado pelo Auth.js v5 para assinar o cookie de sessão JWT. |
-| `AUTH_RESEND_KEY` | Sim (para login por e-mail) | Production, Preview, Development | `re_...` | Chave da API Resend para envio do link mágico de login por e-mail (`/api/session/email`). |
+| `AUTH_RESEND_KEY` | Sim (para login por e-mail) | Production, Preview, Development | `re_...` | Chave da API Resend para envio do código de login por e-mail (`/api/session/email`). |
 | `AUTH_EMAIL_FROM` | Sim (para login por e-mail) | Production, Preview, Development | `Tio Rico <onboarding@resend.dev>` | Remetente verificado na Resend para os e-mails de login. Sem domínio próprio, `onboarding@resend.dev` entrega apenas ao e-mail da conta Resend. |
 
 > **Observações:**

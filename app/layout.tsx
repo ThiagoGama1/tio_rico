@@ -32,7 +32,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${k2d.variable} ${intelOneMono.variable} ${ibmPlexSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full">
+        <div className="flex min-h-dvh">
+          <main className="min-w-0 flex-1">{children}</main>
+        </div>
+      </body>
     </html>
   );
 }

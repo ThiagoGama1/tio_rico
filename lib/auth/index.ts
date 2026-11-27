@@ -1,16 +1,17 @@
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import Resend from "next-auth/providers/resend";
 import { ensureDemoUser } from "@/lib/auth/demo";
+import { verifyEmailLoginCode } from "@/lib/auth/email-code";
 import { getPrisma, isDatabaseConfigured } from "@/lib/db/prisma";
 
 export const DEMO_PROVIDER_ID = "demo";
+export const EMAIL_CODE_PROVIDER_ID = "email-code";
 
 /**
  * Auth.js v5.
  *
- * - `resend`: login sem senha por link no e-mail (tokens em `VerificationToken`).
+ * - `email-code`: login sem senha por código enviado por e-mail.
  * - `demo`: entra na conta ligada à carteira fictícia do seed, sem e-mail.
  *
  * A sessão é JWT (o provedor Credentials do `demo` não funciona com sessão em
@@ -27,14 +28,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   ...(isDatabaseConfigured() ? { adapter: PrismaAdapter(getPrisma()) } : {}),
   session: { strategy: "jwt" },
   providers: [
-    ...(isDatabaseConfigured()
-      ? [
-          Resend({
-            from:
-              process.env.AUTH_EMAIL_FROM ?? "Tio Rico <onboarding@resend.dev>",
-          }),
-        ]
-      : []),
+    Credentials({
+      id: EMAIL_CODE_PROVIDER_ID,
+      name: "Código por e-mail",
+      credentials: {
+        email: { label: "E-mail", type: "email" },
+        code: { label: "Código", type: "text" },
+      },
+      async authorize(credentials) {
+        return verifyEmailLoginCode(credentials.email, credentials.code);
+      },
+    }),
     Credentials({
       id: DEMO_PROVIDER_ID,
       name: "Demonstração",

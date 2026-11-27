@@ -1,20 +1,20 @@
 import type { NextRequest } from "next/server";
-import { signIn } from "@/lib/auth";
 import {
   databaseNotConfigured,
   jsonError,
   jsonOk,
   parseJsonBody,
 } from "@/lib/api/responses";
+import { sendEmailLoginCode } from "@/lib/auth/email-code";
 import { isDatabaseConfigured } from "@/lib/db/prisma";
 import { EmailLoginRequestSchema } from "@/lib/types/account";
 
-const LINK_SENT_MESSAGE =
-  "Se o e-mail for válido, enviamos um link de acesso. Ele expira em 24 horas.";
+const CODE_SENT_MESSAGE =
+  "Se o e-mail for válido, enviamos um código de acesso. Ele expira em 10 minutos.";
 
 /**
- * POST /api/session/email — envia o link de login sem senha via Resend.
- * Corpo: `{ email, callbackUrl? }`. O link leva a `callbackUrl` (padrão "/").
+ * POST /api/session/email — envia o código de login sem senha via Resend.
+ * Corpo: `{ email }`. A autenticação é concluída em `/api/session/email/verify`.
  */
 export async function POST(request: NextRequest) {
   const parsed = await parseJsonBody(
@@ -31,25 +31,16 @@ export async function POST(request: NextRequest) {
   if (!process.env.AUTH_RESEND_KEY?.trim()) {
     return jsonError(
       503,
-      "Envio de e-mail não configurado. Defina AUTH_RESEND_KEY para habilitar o login por link.",
+      "Envio de e-mail não configurado. Defina AUTH_RESEND_KEY para habilitar o login por código.",
     );
   }
 
-  const { email, callbackUrl } = parsed.data;
+  const { email } = parsed.data;
 
   try {
-    const redirectUrl = await signIn("resend", {
-      email,
-      redirectTo: callbackUrl ?? "/",
-      redirect: false,
-    });
-
-    if (typeof redirectUrl === "string" && redirectUrl.includes("error=")) {
-      return jsonError(502, "Não foi possível enviar o link de acesso.");
-    }
-
-    return jsonOk({ ok: true, message: LINK_SENT_MESSAGE });
+    await sendEmailLoginCode(email);
+    return jsonOk({ ok: true, message: CODE_SENT_MESSAGE });
   } catch {
-    return jsonError(502, "Não foi possível enviar o link de acesso.");
+    return jsonError(502, "Não foi possível enviar o código de acesso.");
   }
 }

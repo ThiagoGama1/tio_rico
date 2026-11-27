@@ -9,12 +9,18 @@ const mocks = vi.hoisted(() => ({
   ensureDemoUser: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
+  sendEmailLoginCode: vi.fn<(email: string) => Promise<void>>(),
 }));
 
 vi.mock("@/lib/auth", () => ({
   DEMO_PROVIDER_ID: "demo",
+  EMAIL_CODE_PROVIDER_ID: "email-code",
   signIn: mocks.signIn,
   signOut: mocks.signOut,
+}));
+
+vi.mock("@/lib/auth/email-code", () => ({
+  sendEmailLoginCode: mocks.sendEmailLoginCode,
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -36,6 +42,7 @@ vi.mock("@/lib/profile/repository", () => ({
 import { DELETE, GET } from "@/app/api/session/route";
 import { POST as POST_DEMO } from "@/app/api/session/demo/route";
 import { POST as POST_EMAIL } from "@/app/api/session/email/route";
+import { POST as POST_VERIFY_EMAIL } from "@/app/api/session/email/verify/route";
 
 const USER: SessionUser = { id: "user-1", email: "ana@example.com", name: "Ana" };
 
@@ -103,7 +110,7 @@ describe("POST /api/session/email", () => {
 
   beforeEach(() => {
     process.env.AUTH_RESEND_KEY = "re_test";
-    mocks.signIn.mockResolvedValue("http://localhost:3000/api/auth/verify-request");
+    mocks.sendEmailLoginCode.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -154,7 +161,7 @@ describe("POST /api/session/email", () => {
     expect(json.error).toContain("AUTH_RESEND_KEY");
   });
 
-  it("sends the magic link via the resend provider", async () => {
+  it("sends a verification code to the normalized e-mail", async () => {
     const response = await POST_EMAIL(
       makeJsonPostRequest(URL, { email: "  Ana@Example.com ", callbackUrl: "/carteira" }),
     );
@@ -162,29 +169,60 @@ describe("POST /api/session/email", () => {
 
     expect(response.status).toBe(200);
     expect(json.ok).toBe(true);
-    expect(mocks.signIn).toHaveBeenCalledWith("resend", {
+    expect(mocks.sendEmailLoginCode).toHaveBeenCalledWith("ana@example.com");
+  });
+
+  it("returns 502 when the e-mail provider rejects the request", async () => {
+    mocks.sendEmailLoginCode.mockRejectedValue(new Error("Resend down"));
+
+    const response = await POST_EMAIL(makeJsonPostRequest(URL, { email: "ana@example.com" }));
+
+    expect(response.status).toBe(502);
+  });
+});
+
+describe("POST /api/session/email/verify", () => {
+  const URL = "http://localhost:3000/api/session/email/verify";
+
+  beforeEach(() => {
+    mocks.signIn.mockResolvedValue("http://localhost:3000/");
+  });
+
+  it("rejects malformed verification codes", async () => {
+    const response = await POST_VERIFY_EMAIL(
+      makeJsonPostRequest(URL, { email: "ana@example.com", code: "123" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.signIn).not.toHaveBeenCalled();
+  });
+
+  it("creates the Auth.js session after a valid code", async () => {
+    const response = await POST_VERIFY_EMAIL(
+      makeJsonPostRequest(URL, { email: " Ana@Example.com ", code: "123456" }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json).toEqual({ ok: true });
+    expect(mocks.signIn).toHaveBeenCalledWith("email-code", {
       email: "ana@example.com",
-      redirectTo: "/carteira",
+      code: "123456",
       redirect: false,
+      redirectTo: "/",
     });
   });
 
-  it("returns 502 when Auth.js reports an error", async () => {
+  it("returns a generic error for an invalid or expired code", async () => {
     mocks.signIn.mockResolvedValue(
-      "http://localhost:3000/api/auth/error?error=Configuration",
+      "http://localhost:3000/login?error=CredentialsSignin",
     );
 
-    const response = await POST_EMAIL(makeJsonPostRequest(URL, { email: "ana@example.com" }));
+    const response = await POST_VERIFY_EMAIL(
+      makeJsonPostRequest(URL, { email: "ana@example.com", code: "123456" }),
+    );
 
-    expect(response.status).toBe(502);
-  });
-
-  it("returns 502 when sending throws", async () => {
-    mocks.signIn.mockRejectedValue(new Error("Resend down"));
-
-    const response = await POST_EMAIL(makeJsonPostRequest(URL, { email: "ana@example.com" }));
-
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(400);
   });
 });
 

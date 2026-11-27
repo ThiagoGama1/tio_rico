@@ -31,7 +31,7 @@ O Tio Rico analisa e explica. Ele não recomenda a compra de ativos específicos
 
 - **Next.js 16.4 (App Router + Cache Components) + React 19 + TypeScript + Tailwind CSS 4 + shadcn/ui**
 - **PostgreSQL + Prisma 7 (`@prisma/adapter-pg` + `pg`)** para persistência e histórico
-- **Auth.js v5 (`next-auth`) + `@auth/prisma-adapter` + Resend** para autenticação por link mágico e conta de demonstração
+- **Auth.js v5 (`next-auth`) + `@auth/prisma-adapter` + Resend** para autenticação por código de e-mail e conta de demonstração
 - **API do Banco Central (SGS)** para indicadores econômicos (Selic, CDI e IPCA)
 - **Vercel AI SDK (`ai`) + LLM (Gemini `gemini-3.5-flash-lite` ou Claude `claude-sonnet-4-5`)** para análise em JSON estruturado
 - **Firecrawl** para coletar notícias econômicas recentes
@@ -96,7 +96,7 @@ docs/                     # Guia completo de deploy e validação na Vercel
    Principais variáveis em `.env.local` (consulte [`.env.example`](.env.example)):
    - `DATABASE_URL` (e opcionalmente `DATABASE_URL_POOLED` em runtime serverless)
    - `AUTH_SECRET` (gere com `npx auth secret`)
-   - `AUTH_RESEND_KEY` e `AUTH_EMAIL_FROM` (necessários para login por link mágico no e-mail; a conta demo via `POST /api/session/demo` funciona mesmo sem Resend)
+   - `AUTH_RESEND_KEY` e `AUTH_EMAIL_FROM` (necessários para login por código no e-mail; a conta demo via `POST /api/session/demo` funciona mesmo sem Resend)
    - `AI_PROVIDER` (`"google"` ou `"anthropic"`) e `AI_MODEL` (opcional; padrão `gemini-3.5-flash-lite` / `claude-sonnet-4-5`)
    - `GOOGLE_GENERATIVE_AI_API_KEY` (ou `GEMINI_API_KEY`) / `ANTHROPIC_API_KEY`
    - `FIRECRAWL_API_KEY` (opcional; sem ela, a análise segue sem notícias)
@@ -128,7 +128,8 @@ Para publicar na Vercel (PostgreSQL via Marketplace, variáveis de ambiente, Pre
 | `GET/POST /api/auth/[...nextauth]` | Público | Rotas internas do Auth.js v5 (callback, CSRF, providers) |
 | `GET/DELETE /api/session` | Público | Consulta o usuário/perfil da sessão atual ou encerra a sessão (logout) |
 | `POST /api/session/demo` | Público | Autentica na conta fictícia da demo (`Marina Costa`) e grava o cookie de sessão |
-| `POST /api/session/email` | Público | Envia link de login sem senha via Resend (`AUTH_RESEND_KEY`) |
+| `POST /api/session/email` | Público | Envia código de login sem senha via Resend (`AUTH_RESEND_KEY`) |
+| `POST /api/session/email/verify` | Público | Valida o código de e-mail e cria a sessão |
 | `GET/POST/PATCH /api/profile` | Sessão obrigatória | Consulta, cria ou atualiza parcialmente o perfil do investidor logado |
 | `GET/POST /api/portfolio/assets` | Sessão obrigatória | Lista ou adiciona ativos na carteira do usuário logado |
 | `GET/PATCH/DELETE /api/portfolio/assets/[id]` | Sessão obrigatória | Consulta, edita ou remove um ativo pertencente ao usuário logado |
