@@ -2,7 +2,12 @@ import type { NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { jsonOk, parseJsonBody, unauthorized } from "@/lib/api/responses";
 import { SuitabilityRequestSchema } from "@/lib/types/motor";
-import { alocacaoAlvo, calcularPerfil, pontuarRespostas } from "@/motor";
+import {
+  alocacaoAlvo,
+  arredondarAlvo,
+  calcularPerfil,
+  pontuarRespostas,
+} from "@/motor";
 
 /**
  * POST /api/motor/perfil — questionário de suitability do onboarding.
@@ -25,6 +30,7 @@ export async function POST(request: NextRequest) {
   return jsonOk({
     tipo,
     pontos: pontuarRespostas(respostas),
-    alvoSugerido: alocacaoAlvo({ tipo, excluir }),
+    // inteiros que somam exatamente 100, prontos para a tela (maior resto)
+    alvoSugerido: arredondarAlvo(alocacaoAlvo({ tipo, excluir })),
   });
 }

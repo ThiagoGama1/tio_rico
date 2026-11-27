@@ -74,15 +74,33 @@ describe("POST /api/motor/perfil", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(json.tipo).toBe("moderado");
     expect(json.pontos).toBe(7);
-    expect(json.alvoSugerido.cripto).toBeCloseTo(2);
+    expect(json.alvoSugerido.cripto).toBe(2);
   });
 
   it("removes excluded classes from the suggested target", async () => {
     const response = await POST(makeJsonPostRequest({ ...RESPOSTAS, excluir: ["cripto"] }));
     const json = await response.json();
 
-    expect(json.alvoSugerido.cripto).toBeUndefined();
-    const soma = Object.values<number>(json.alvoSugerido).reduce((a, b) => a + b, 0);
-    expect(soma).toBeCloseTo(100);
+    //moderado sem cripto, arredondado pelo maior resto: 31/15/10/5/10/21/8
+    expect(json.alvoSugerido).toEqual({
+      renda_fixa_pos: 31,
+      renda_fixa_ipca: 15,
+      renda_fixa_pre: 10,
+      caixa: 5,
+      fiis: 10,
+      acoes: 21,
+      internacional: 8,
+    });
+  });
+
+  it("returns the suggested target as integers summing exactly 100", async () => {
+    for (const excluir of [[], ["cripto"], ["acoes", "internacional"]]) {
+      const response = await POST(makeJsonPostRequest({ ...RESPOSTAS, excluir }));
+      const json = await response.json();
+      const valores = Object.values<number>(json.alvoSugerido);
+
+      expect(valores.every(Number.isInteger)).toBe(true);
+      expect(valores.reduce((a, b) => a + b, 0)).toBe(100);
+    }
   });
 });
