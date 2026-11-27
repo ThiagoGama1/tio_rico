@@ -177,12 +177,12 @@ function extractClassAmountsCents(
     return byClass;
   }
 
-  for (const allocation of checkIn.motorResult.allocations) {
-    const cents = sanitizeNonNegativeInt(allocation.currentCents);
+  for (const resultadoClasse of checkIn.motorResult.classes) {
+    const cents = sanitizeNonNegativeInt(resultadoClasse.valorCentavos);
     if (cents === 0) continue;
     byClass.set(
-      allocation.assetClass,
-      (byClass.get(allocation.assetClass) ?? 0) + cents,
+      resultadoClasse.classe,
+      (byClass.get(resultadoClasse.classe) ?? 0) + cents,
     );
   }
 

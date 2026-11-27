@@ -4,12 +4,12 @@ import {
   type AssetClass,
   type InvestorProfileInput,
   type MacroIndicators,
-  type MotorCalculationResult,
   type NewsFetchResult,
   type PortfolioEvolutionSummary,
   type PortfolioPositionInput,
   type ReferenceMonth,
 } from "@/lib/types/domain";
+import type { ResultadoMotor } from "@/motor/tipos";
 
 export const MANDATORY_DISCLAIMER =
   "Aviso educacional: esta análise tem caráter exclusivamente informativo e educacional, baseada nos dados informados por você e nos cálculos determinísticos do Tio Rico. Ela não constitui recomendação de compra, venda ou manutenção de ativos específicos e não substitui a orientação de um profissional de investimentos certificado.";
@@ -28,7 +28,7 @@ export interface AdvisorContextInput {
   referenceMonth: ReferenceMonth;
   userNotes?: string;
   contributionCents: number;
-  motorResult: MotorCalculationResult;
+  motorResult: ResultadoMotor;
   macroIndicators: MacroIndicators;
   evolutionSummary?: PortfolioEvolutionSummary | null;
   news?: NewsFetchResult | null;
@@ -235,29 +235,29 @@ export function buildAdvisorUserPrompt(input: AdvisorContextInput): string {
   // 3. Motor de Cálculo
   const motorLines: string[] = [
     "## 3. Alocação e Simulação do Motor de Cálculo (FONTE OFICIAL DE NÚMEROS)",
-    `- Versão do motor: ${motorResult.engineVersion}`,
-    `- Patrimônio atual total: ${formatCentsBRL(motorResult.totalCurrentCents)} (${motorResult.totalCurrentCents} centavos)`,
-    `- Aporte simulado: ${formatCentsBRL(motorResult.contributionCents)} (${motorResult.contributionCents} centavos)`,
-    `- Patrimônio projetado após aporte: ${formatCentsBRL(motorResult.totalAfterContributionCents)} (${motorResult.totalAfterContributionCents} centavos)`,
-    `- Score de aderência atual: ${formatPctBR(motorResult.adherenceScore)}`,
-    `- Score de aderência projetado após aporte: ${formatPctBR(motorResult.adherenceScoreAfterContribution)}`,
-    `- Retorno nominal anual estimado da carteira: ${formatPctBR(motorResult.estimatedAnnualYieldPct)}`,
-    `- Retorno real anual estimado da carteira (Fisher): ${formatPctBR(motorResult.estimatedRealYieldPct)}`,
-    `- Taxa de juro real da economia (Selic vs IPCA 12m): ${formatPctBR(motorResult.realInterestRatePct)}`,
+    `- Versão do motor: ${motorResult.versao}`,
+    `- Patrimônio atual total: ${formatCentsBRL(motorResult.totalCentavos)} (${motorResult.totalCentavos} centavos)`,
+    `- Aporte simulado: ${formatCentsBRL(motorResult.aporteCentavos)} (${motorResult.aporteCentavos} centavos)`,
+    `- Patrimônio projetado após aporte: ${formatCentsBRL(motorResult.totalPosAporteCentavos)} (${motorResult.totalPosAporteCentavos} centavos)`,
+    `- Score de aderência atual: ${formatPctBR(motorResult.aderencia)}`,
+    `- Score de aderência projetado após aporte: ${formatPctBR(motorResult.aderenciaPosAporte)}`,
+    `- Retorno nominal anual estimado da carteira: ${formatPctBR(motorResult.rendimentoAnualPct)}`,
+    `- Retorno real anual estimado da carteira (Fisher): ${formatPctBR(motorResult.rendimentoRealPct)}`,
+    `- Taxa de juro real da economia (Selic vs IPCA 12m): ${formatPctBR(motorResult.juroRealPct)}`,
     "- Detalhamento por classe de ativo (USE EXATAMENTE ESTES VALORES):",
   ];
 
-  if (motorResult.allocations.length === 0) {
+  if (motorResult.classes.length === 0) {
     motorLines.push("  - Nenhuma classe com saldo ou meta cadastrada.");
   } else {
-    for (const allocation of motorResult.allocations) {
+    for (const resultadoClasse of motorResult.classes) {
       motorLines.push(
-        `  - ${ASSET_CLASS_LABELS[allocation.assetClass]} (${allocation.assetClass}): ` +
-          `atual ${formatCentsBRL(allocation.currentCents)} (${formatPctBR(allocation.currentPct)}) | ` +
-          `alvo ${formatPctBR(allocation.targetPct)} | ` +
-          `desvio ${formatSignedPpBR(allocation.deviationPct)} | ` +
-          `aporte sugerido ${formatCentsBRL(allocation.suggestedContributionCents)} (${allocation.suggestedContributionCents} centavos) | ` +
-          `projeção pós-aporte ${formatPctBR(allocation.projectedPctAfterContribution)}`,
+        `  - ${ASSET_CLASS_LABELS[resultadoClasse.classe]} (${resultadoClasse.classe}): ` +
+          `atual ${formatCentsBRL(resultadoClasse.valorCentavos)} (${formatPctBR(resultadoClasse.atualPct)}) | ` +
+          `alvo ${formatPctBR(resultadoClasse.alvoPct)} | ` +
+          `desvio ${formatSignedPpBR(resultadoClasse.desvioPct)} | ` +
+          `aporte sugerido ${formatCentsBRL(resultadoClasse.aporteCentavos)} (${resultadoClasse.aporteCentavos} centavos) | ` +
+          `projeção pós-aporte ${formatPctBR(resultadoClasse.posAportePct)}`,
       );
     }
   }

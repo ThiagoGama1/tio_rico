@@ -8,7 +8,7 @@ import {
   MANDATORY_DISCLAIMER,
   type AdvisorContextInput,
 } from "@/lib/ai/context-builder";
-import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import { resultadoMotorFake } from "@/lib/testing/resultado-motor-fake";
 import type {
   MacroIndicators,
   NewsFetchResult,
@@ -58,13 +58,10 @@ function createBaseInput(
   const contributionCents = overrides?.contributionCents ?? 200_000;
   const motorResult =
     overrides?.motorResult ??
-    calculatePortfolioWithMotor({
-      riskProfile: "moderado",
-      horizonMonths: 60,
+    resultadoMotorFake({
       positions,
       targetAllocation,
       contributionCents,
-      macro,
     });
 
   return {

@@ -17,11 +17,8 @@ import {
   getCheckInByIdForProfile,
 } from "@/lib/history/repository";
 import { getProfileForUser } from "@/lib/profile/repository";
-import {
-  ASSET_CLASS_LABELS,
-  type CheckInDetail,
-  type ClassAllocationComparison,
-} from "@/lib/types/domain";
+import { ASSET_CLASS_LABELS, type CheckInDetail } from "@/lib/types/domain";
+import type { ResultadoClasse } from "@/motor/tipos";
 
 // O detalhe é individual por sessão e depende de um parâmetro dinâmico da rota.
 export const instant = false;
@@ -103,8 +100,8 @@ function UnavailableDetail({ message }: { message: string }) {
   );
 }
 
-function allocationDetail(allocation: ClassAllocationComparison) {
-  const difference = allocation.targetPct - allocation.currentPct;
+function allocationDetail(allocation: ResultadoClasse) {
+  const difference = allocation.alvoPct - allocation.atualPct;
   const direction = difference > 0 ? "abaixo" : difference < 0 ? "acima" : "alinhada";
 
   return difference === 0
@@ -114,11 +111,11 @@ function allocationDetail(allocation: ClassAllocationComparison) {
 
 function AdjustmentOptions({ checkIn }: { checkIn: CheckInDetail }) {
   const analysis = checkIn.aiAnalysis;
-  const fallbackOptions = checkIn.motorResult.allocations
-    .filter((allocation) => allocation.currentPct !== allocation.targetPct)
+  const fallbackOptions = checkIn.motorResult.classes
+    .filter((allocation) => allocation.atualPct !== allocation.alvoPct)
     .sort(
       (left, right) =>
-        Math.abs(right.targetPct - right.currentPct) - Math.abs(left.targetPct - left.currentPct),
+        Math.abs(right.alvoPct - right.atualPct) - Math.abs(left.alvoPct - left.atualPct),
     )
     .slice(0, 3);
 
@@ -163,12 +160,12 @@ function AdjustmentOptions({ checkIn }: { checkIn: CheckInDetail }) {
           ) : fallbackOptions.length > 0 ? (
             fallbackOptions.map((allocation) => (
               <article
-                key={allocation.assetClass}
+                key={allocation.classe}
                 className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center"
               >
                 <div>
                   <p className="font-k2d font-semibold text-foreground">
-                    {ASSET_CLASS_LABELS[allocation.assetClass]}
+                    {ASSET_CLASS_LABELS[allocation.classe]}
                   </p>
                   <p className="mt-1 font-k2d text-sm text-muted">
                     {allocationDetail(allocation)}

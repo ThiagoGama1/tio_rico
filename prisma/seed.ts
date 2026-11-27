@@ -9,19 +9,19 @@ import {
   formatSignedPpBR,
 } from "../lib/history/evolution";
 import { DEMO_PROFILE_ID } from "../lib/history/repository";
-import { calculatePortfolioWithMotor } from "../lib/motor/adapter";
+import { montarEntradaMotor } from "../lib/motor/conversao";
+import { gerarDiagnostico, type ResultadoMotor } from "../motor";
 import {
   ASSET_CLASS_LABELS,
   AiAnalysisOutputSchema,
   MacroIndicatorsSchema,
-  MotorCalculationResultSchema,
+  ResultadoMotorSchema,
   NewsFetchResultSchema,
   TargetAllocationSchema,
   type AiAnalysisOutput,
   type AssetClass,
   type InvestorGoal,
   type MacroIndicators,
-  type MotorCalculationResult,
   type NewsFetchResult,
   type PortfolioPositionInput,
   type ReferenceMonth,
@@ -430,7 +430,7 @@ const SEED_CHECKINS: SeedCheckInSpec[] = [
 
 function buildSeedAiAnalysis(params: {
   spec: SeedCheckInSpec;
-  motorResult: MotorCalculationResult;
+  motorResult: ResultadoMotor;
   previousTotalCents: number | null;
   previousAdherenceScore: number | null;
   previousReferenceMonth: ReferenceMonth | null;
@@ -443,44 +443,44 @@ function buildSeedAiAnalysis(params: {
     previousReferenceMonth,
   } = params;
 
-  const overweight = motorResult.allocations
-    .filter((a) => a.deviationPct > 0.5)
-    .sort((a, b) => b.deviationPct - a.deviationPct);
-  const underweight = motorResult.allocations
-    .filter((a) => a.deviationPct < -0.5)
-    .sort((a, b) => a.deviationPct - b.deviationPct);
+  const overweight = motorResult.classes
+    .filter((a) => a.desvioPct > 0.5)
+    .sort((a, b) => b.desvioPct - a.desvioPct);
+  const underweight = motorResult.classes
+    .filter((a) => a.desvioPct < -0.5)
+    .sort((a, b) => a.desvioPct - b.desvioPct);
 
   const topOver = overweight[0];
   const topUnder = underweight[0];
 
   const resumoExecutivo =
-    `No check-in de ${spec.referenceMonth}, a carteira soma ${formatCentsBRL(motorResult.totalCurrentCents)} ` +
-    `com aderência atual de ${motorResult.adherenceScore.toFixed(2).replace(".", ",")}/100. ` +
-    `Com o novo aporte de ${formatCentsBRL(motorResult.contributionCents)}, o patrimônio projetado vai a ` +
-    `${formatCentsBRL(motorResult.totalAfterContributionCents)} e a aderência sobe para ` +
-    `${motorResult.adherenceScoreAfterContribution.toFixed(2).replace(".", ",")}/100.`;
+    `No check-in de ${spec.referenceMonth}, a carteira soma ${formatCentsBRL(motorResult.totalCentavos)} ` +
+    `com aderência atual de ${motorResult.aderencia.toFixed(2).replace(".", ",")}/100. ` +
+    `Com o novo aporte de ${formatCentsBRL(motorResult.aporteCentavos)}, o patrimônio projetado vai a ` +
+    `${formatCentsBRL(motorResult.totalPosAporteCentavos)} e a aderência sobe para ` +
+    `${motorResult.aderenciaPosAporte.toFixed(2).replace(".", ",")}/100.`;
 
   const diagnosticoParts: string[] = [];
   if (topOver) {
     diagnosticoParts.push(
-      `${ASSET_CLASS_LABELS[topOver.assetClass]} está em ${formatPctBR(topOver.currentPct)} frente ao alvo de ${formatPctBR(topOver.targetPct)} (${formatSignedPpBR(topOver.deviationPct)}).`,
+      `${ASSET_CLASS_LABELS[topOver.classe]} está em ${formatPctBR(topOver.atualPct)} frente ao alvo de ${formatPctBR(topOver.alvoPct)} (${formatSignedPpBR(topOver.desvioPct)}).`,
     );
   }
   if (topUnder) {
     diagnosticoParts.push(
-      `${ASSET_CLASS_LABELS[topUnder.assetClass]} aparece abaixo da meta em ${formatPctBR(topUnder.currentPct)} vs. alvo de ${formatPctBR(topUnder.targetPct)} (${formatSignedPpBR(topUnder.deviationPct)}).`,
+      `${ASSET_CLASS_LABELS[topUnder.classe]} aparece abaixo da meta em ${formatPctBR(topUnder.atualPct)} vs. alvo de ${formatPctBR(topUnder.alvoPct)} (${formatSignedPpBR(topUnder.desvioPct)}).`,
     );
   }
   diagnosticoParts.push(
-    `Rentabilidade nominal estimada pelo motor: ${formatPctBR(motorResult.estimatedAnnualYieldPct)} a.a. (juro real estimado de ${formatPctBR(motorResult.estimatedRealYieldPct)} a.a. frente ao IPCA de ${formatPctBR(spec.macro.ipca12m)}).`,
+    `Rentabilidade nominal estimada pelo motor: ${formatPctBR(motorResult.rendimentoAnualPct)} a.a. (juro real estimado de ${formatPctBR(motorResult.rendimentoRealPct)} a.a. frente ao IPCA de ${formatPctBR(spec.macro.ipca12m)}).`,
   );
 
   let evolucaoDesdeUltimoCheckin: string;
   if (previousTotalCents === null || previousReferenceMonth === null) {
     evolucaoDesdeUltimoCheckin =
-      `Este é o primeiro check-in registrado (${spec.referenceMonth}), servindo como linha de base com patrimônio de ${formatCentsBRL(motorResult.totalCurrentCents)} e aderência de ${motorResult.adherenceScore.toFixed(2).replace(".", ",")}/100.`;
+      `Este é o primeiro check-in registrado (${spec.referenceMonth}), servindo como linha de base com patrimônio de ${formatCentsBRL(motorResult.totalCentavos)} e aderência de ${motorResult.aderencia.toFixed(2).replace(".", ",")}/100.`;
   } else {
-    const deltaCents = motorResult.totalCurrentCents - previousTotalCents;
+    const deltaCents = motorResult.totalCentavos - previousTotalCents;
     const deltaPct =
       previousTotalCents > 0
         ? round2((deltaCents / previousTotalCents) * 100)
@@ -488,33 +488,33 @@ function buildSeedAiAnalysis(params: {
     const estGainCents = deltaCents - spec.contributionCents;
     const adherenceDeltaText =
       previousAdherenceScore !== null
-        ? ` A aderência variou ${formatSignedPpBR(round2(motorResult.adherenceScore - previousAdherenceScore))} (de ${previousAdherenceScore.toFixed(2).replace(".", ",")} para ${motorResult.adherenceScore.toFixed(2).replace(".", ",")}).`
+        ? ` A aderência variou ${formatSignedPpBR(round2(motorResult.aderencia - previousAdherenceScore))} (de ${previousAdherenceScore.toFixed(2).replace(".", ",")} para ${motorResult.aderencia.toFixed(2).replace(".", ",")}).`
         : "";
     evolucaoDesdeUltimoCheckin =
       `Desde ${previousReferenceMonth}, o patrimônio evoluiu ${formatSignedCentsBRL(deltaCents)} (${formatSignedPctBR(deltaPct)}), ` +
       `com aporte registrado de ${formatCentsBRL(spec.contributionCents)} e variação estimada sem aporte de ${formatSignedCentsBRL(estGainCents)}.${adherenceDeltaText}`;
   }
 
-  const opcoesDeAjuste = motorResult.allocations
-    .filter((a) => a.suggestedContributionCents > 0)
-    .sort((a, b) => b.suggestedContributionCents - a.suggestedContributionCents)
+  const opcoesDeAjuste = motorResult.classes
+    .filter((a) => a.aporteCentavos > 0)
+    .sort((a, b) => b.aporteCentavos - a.aporteCentavos)
     .map((allocation) => ({
-      classeAtivo: allocation.assetClass,
-      acaoSugerida: `Direcionar parte do novo aporte para ${ASSET_CLASS_LABELS[allocation.assetClass]}`,
-      valorSugeridoCentavos: allocation.suggestedContributionCents,
+      classeAtivo: allocation.classe,
+      acaoSugerida: `Direcionar parte do novo aporte para ${ASSET_CLASS_LABELS[allocation.classe]}`,
+      valorSugeridoCentavos: allocation.aporteCentavos,
       justificativa:
-        `Classe está em ${formatPctBR(allocation.currentPct)} frente ao alvo de ${formatPctBR(allocation.targetPct)} (${formatSignedPpBR(allocation.deviationPct)}). ` +
-        `O direcionamento projeta a participação para ${formatPctBR(allocation.projectedPctAfterContribution)} sem necessidade de vendas.`,
+        `Classe está em ${formatPctBR(allocation.atualPct)} frente ao alvo de ${formatPctBR(allocation.alvoPct)} (${formatSignedPpBR(allocation.desvioPct)}). ` +
+        `O direcionamento projeta a participação para ${formatPctBR(allocation.posAportePct)} sem necessidade de vendas.`,
     }));
 
   const alertas: string[] = [];
-  if (topOver && topOver.deviationPct >= 5) {
+  if (topOver && topOver.desvioPct >= 5) {
     alertas.push(
-      `Concentração acima do alvo em ${ASSET_CLASS_LABELS[topOver.assetClass]} (${formatSignedPpBR(topOver.deviationPct)}). Priorize rebalanceamento via novos aportes.`,
+      `Concentração acima do alvo em ${ASSET_CLASS_LABELS[topOver.classe]} (${formatSignedPpBR(topOver.desvioPct)}). Priorize rebalanceamento via novos aportes.`,
     );
   }
   alertas.push(
-    `Juro real da Selic em ${formatPctBR(motorResult.realInterestRatePct)} a.a. favorece paciência na transição para o alvo moderado sem comprometer a reserva de liquidez.`,
+    `Juro real da Selic em ${formatPctBR(motorResult.juroRealPct)} a.a. favorece paciência na transição para o alvo moderado sem comprometer a reserva de liquidez.`,
   );
 
   const fontesConsultadas = spec.news.items.map((item) => ({
@@ -611,15 +611,18 @@ async function main(): Promise<void> {
     let previousReferenceMonth: ReferenceMonth | null = null;
 
     for (const spec of SEED_CHECKINS) {
-      const motorResult = MotorCalculationResultSchema.parse(
-        calculatePortfolioWithMotor({
-          riskProfile: "moderado",
-          horizonMonths: 60,
-          positions: spec.positions,
-          targetAllocation: DEMO_TARGET_ALLOCATION,
-          contributionCents: spec.contributionCents,
-          macro: spec.macro,
-        }),
+      const motorResult = ResultadoMotorSchema.parse(
+        gerarDiagnostico(
+          montarEntradaMotor({
+            riskProfile: "moderado",
+            horizonMonths: 60,
+            positions: spec.positions,
+            targetAllocation: DEMO_TARGET_ALLOCATION,
+            contributionCents: spec.contributionCents,
+            macro: spec.macro,
+            preferences: DEMO_PREFERENCES,
+          }),
+        ),
       );
 
       const aiAnalysis = buildSeedAiAnalysis({
@@ -630,7 +633,7 @@ async function main(): Promise<void> {
         previousReferenceMonth,
       });
 
-      const totalValueCents = motorResult.totalCurrentCents;
+      const totalValueCents = motorResult.totalCentavos;
 
       await prisma.$transaction(async (tx) => {
         await tx.checkIn.upsert({
@@ -641,7 +644,7 @@ async function main(): Promise<void> {
             userNotes: spec.userNotes,
             contributionCents: spec.contributionCents,
             totalValueCents,
-            adherenceScore: motorResult.adherenceScore,
+            adherenceScore: motorResult.aderencia,
             macroSnapshot: toPrismaJson(spec.macro),
             motorResult: toPrismaJson(motorResult),
             aiAnalysis: toPrismaJson(aiAnalysis),
@@ -655,7 +658,7 @@ async function main(): Promise<void> {
             userNotes: spec.userNotes,
             contributionCents: spec.contributionCents,
             totalValueCents,
-            adherenceScore: motorResult.adherenceScore,
+            adherenceScore: motorResult.aderencia,
             macroSnapshot: toPrismaJson(spec.macro),
             motorResult: toPrismaJson(motorResult),
             aiAnalysis: toPrismaJson(aiAnalysis),
@@ -691,7 +694,7 @@ async function main(): Promise<void> {
       });
 
       previousTotalCents = totalValueCents;
-      previousAdherenceScore = motorResult.adherenceScore;
+      previousAdherenceScore = motorResult.aderencia;
       previousReferenceMonth = spec.referenceMonth;
     }
 

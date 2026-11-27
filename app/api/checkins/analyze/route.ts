@@ -7,11 +7,12 @@ import {
 import { AiConfigurationError } from "@/lib/ai/provider";
 import { jsonError, jsonOk, parseJsonBody } from "@/lib/api/responses";
 import { fetchEconomicNews } from "@/lib/integrations/firecrawl";
-import { calculatePortfolioWithMotor } from "@/lib/motor/adapter";
+import { montarEntradaMotor } from "@/lib/motor/conversao";
+import { gerarDiagnostico, type ResultadoMotor } from "@/motor";
 import {
   InvestorProfileInputSchema,
   MacroIndicatorsSchema,
-  MotorCalculationResultSchema,
+  ResultadoMotorSchema,
   PortfolioEvolutionSummarySchema,
   PortfolioPositionInputSchema,
   ReferenceMonthSchema,
@@ -26,7 +27,7 @@ const AnalyzeCheckInRequestSchema = z.object({
   userNotes: z.string().max(4000).default(""),
   contributionCents: z.number().int().nonnegative(),
   macroIndicators: MacroIndicatorsSchema,
-  motorResult: MotorCalculationResultSchema.optional(),
+  motorResult: ResultadoMotorSchema.optional(),
   evolutionSummary: PortfolioEvolutionSummarySchema.optional().nullable(),
   skipNews: z.boolean().default(false),
 });
@@ -41,23 +42,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const data = parsed.data;
 
-  const motorResult =
-    data.motorResult ??
-    calculatePortfolioWithMotor({
-      riskProfile: data.profile.riskProfile,
-      horizonMonths: data.profile.horizonMonths,
-      positions: data.positions,
-      targetAllocation: data.profile.targetAllocation,
-      contributionCents: data.contributionCents,
-      macro: data.macroIndicators,
-    });
+  let motorResult: ResultadoMotor;
+  try {
+    motorResult =
+      data.motorResult ??
+      gerarDiagnostico(
+        montarEntradaMotor({
+          riskProfile: data.profile.riskProfile,
+          horizonMonths: data.profile.horizonMonths,
+          positions: data.positions,
+          targetAllocation: data.profile.targetAllocation,
+          contributionCents: data.contributionCents,
+          macro: data.macroIndicators,
+          preferences: data.profile.preferences,
+        }),
+      );
+  } catch {
+    return jsonError(500, "Falha no motor de cálculo ao processar a carteira.");
+  }
 
   const assetClassSet = new Set<AssetClass>();
   for (const position of data.positions) {
     assetClassSet.add(position.assetClass);
   }
-  for (const allocation of motorResult.allocations) {
-    assetClassSet.add(allocation.assetClass);
+  for (const resultadoClasse of motorResult.classes) {
+    assetClassSet.add(resultadoClasse.classe);
   }
   const assetClasses = Array.from(assetClassSet);
 

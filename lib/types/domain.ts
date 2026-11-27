@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Classe, ResultadoMotor } from "@/motor/tipos";
 
 // =============================================================================
 // Enums & Constants
@@ -143,42 +144,42 @@ export type MacroIndicators = z.infer<typeof MacroIndicatorsSchema>;
 // Calculation Motor Contracts
 // =============================================================================
 
-export const ClassAllocationComparisonSchema = z.object({
-  assetClass: AssetClassSchema,
-  currentCents: z.number().int().nonnegative(),
-  currentPct: z.number().min(0).max(100),
-  targetPct: z.number().min(0).max(100),
-  deviationPct: z.number(),
-  suggestedContributionCents: z.number().int().nonnegative(),
-  projectedPctAfterContribution: z.number().min(0).max(100),
-});
-export type ClassAllocationComparison = z.infer<
-  typeof ClassAllocationComparisonSchema
->;
+// The motor (`motor/`) owns these types. The Zod schemas below validate the
+// same shape at runtime (request bodies and `CheckIn.motorResult` JSON read
+// back from PostgreSQL). The compile-time checks at the end of this block fail
+// if the schemas and the motor types drift apart.
 
-export const MotorCalculationInputSchema = z.object({
-  riskProfile: RiskProfileSchema,
-  horizonMonths: z.number().int().min(1),
-  positions: z.array(PortfolioPositionInputSchema),
-  targetAllocation: TargetAllocationSchema,
-  contributionCents: z.number().int().nonnegative(),
-  macro: MacroIndicatorsSchema,
+export const ResultadoClasseSchema = z.object({
+  classe: AssetClassSchema,
+  valorCentavos: z.number().int().nonnegative(),
+  atualPct: z.number().min(0).max(100),
+  alvoPct: z.number().min(0).max(100),
+  desvioPct: z.number(),
+  aporteCentavos: z.number().int().nonnegative(),
+  posAportePct: z.number().min(0).max(100),
 });
-export type MotorCalculationInput = z.infer<typeof MotorCalculationInputSchema>;
 
-export const MotorCalculationResultSchema = z.object({
-  totalCurrentCents: z.number().int().nonnegative(),
-  contributionCents: z.number().int().nonnegative(),
-  totalAfterContributionCents: z.number().int().nonnegative(),
-  allocations: z.array(ClassAllocationComparisonSchema),
-  adherenceScore: z.number().min(0).max(100),
-  adherenceScoreAfterContribution: z.number().min(0).max(100),
-  estimatedAnnualYieldPct: z.number(),
-  estimatedRealYieldPct: z.number(),
-  realInterestRatePct: z.number(),
-  engineVersion: z.string().min(1),
+export const ResultadoMotorSchema = z.object({
+  totalCentavos: z.number().int().nonnegative(),
+  aporteCentavos: z.number().int().nonnegative(),
+  totalPosAporteCentavos: z.number().int().nonnegative(),
+  classes: z.array(ResultadoClasseSchema),
+  aderencia: z.number().min(0).max(100),
+  aderenciaPosAporte: z.number().min(0).max(100),
+  rendimentoAnualPct: z.number(),
+  rendimentoRealPct: z.number(),
+  juroRealPct: z.number(),
+  versao: z.string().min(1),
 });
-export type MotorCalculationResult = z.infer<typeof MotorCalculationResultSchema>;
+
+type SameType<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const assetClassMatchesMotor: SameType<AssetClass, Classe> = true;
+const resultSchemaMatchesMotor: SameType<
+  z.infer<typeof ResultadoMotorSchema>,
+  ResultadoMotor
+> = true;
+void assetClassMatchesMotor;
+void resultSchemaMatchesMotor;
 
 // =============================================================================
 // Market News (Firecrawl)
@@ -368,7 +369,7 @@ export const CheckInDetailSchema = z.object({
   totalValueCents: z.number().int().nonnegative(),
   adherenceScore: z.number().min(0).max(100).nullable(),
   macroSnapshot: MacroIndicatorsSchema,
-  motorResult: MotorCalculationResultSchema,
+  motorResult: ResultadoMotorSchema,
   aiAnalysis: AiAnalysisOutputSchema.nullable(),
   newsSources: NewsFetchResultSchema.nullable(),
   positions: z.array(CheckInPositionDetailSchema),
