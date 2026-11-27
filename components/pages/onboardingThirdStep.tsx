@@ -274,7 +274,7 @@ export function OnboardingThirdStep() {
       }
 
       sessionStorage.removeItem(ONBOARDING_DRAFT_KEY);
-      router.push("/");
+      router.replace("/overview");
       router.refresh();
     } catch (caughtError) {
       setError(

@@ -41,6 +41,7 @@ export async function GET(): Promise<NextResponse> {
     return jsonOk({
       profile,
       evolution,
+      checkIns,
       checkInsCount: checkIns.length,
     });
   } catch (error) {
