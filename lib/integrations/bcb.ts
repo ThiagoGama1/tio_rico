@@ -249,14 +249,54 @@ function normalizeSeriesPoints(
   return sorted;
 }
 
+/**
+ * The BCB API sits behind a CDN (Azure Front Door) that sometimes answers a
+ * plain, unconditional GET with `304 Not Modified` and an empty body. It sticks
+ * to one URL path for a while and moves between series over time (seen on 433
+ * and 432). Cache headers and extra query params do not help (the CDN ignores
+ * the query string in its cache key); a different path does. So when a path
+ * comes back empty we ask for `ultimos/N+1`, then `ultimos/N+2`, and drop the
+ * extra points.
+ */
+export const BCB_CDN_ALTERNATE_PATHS = 2;
+
+class EmptyCdnResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmptyCdnResponseError";
+  }
+}
+
+type FetchSeriesOptions = {
+  fetchImpl: typeof fetch;
+  timeoutMs: number;
+  retryDelayMs: number;
+};
+
 async function fetchBcbSeries(
   seriesId: BcbSeriesId,
   count: number,
-  options: {
-    fetchImpl: typeof fetch;
-    timeoutMs: number;
-    retryDelayMs: number;
-  },
+  options: FetchSeriesOptions,
+): Promise<IpcaHistoryPoint[]> {
+  let lastError: unknown;
+  for (let extra = 0; extra <= BCB_CDN_ALTERNATE_PATHS; extra++) {
+    try {
+      const points = await fetchBcbSeriesUrl(seriesId, count + extra, options);
+      return normalizeSeriesPoints(points, count);
+    } catch (error) {
+      if (!(error instanceof EmptyCdnResponseError)) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function fetchBcbSeriesUrl(
+  seriesId: BcbSeriesId,
+  count: number,
+  options: FetchSeriesOptions,
 ): Promise<IpcaHistoryPoint[]> {
   const url = buildBcbSeriesUrl(seriesId, count);
   const safeTimeoutMs = Math.max(1, options.timeoutMs);
@@ -271,8 +311,17 @@ async function fetchBcbSeries(
         headers: {
           Accept: "application/json",
         },
+        // Never let the Next.js data cache revalidate this request with
+        // conditional headers: we always need the full body.
+        cache: "no-store",
         signal: AbortSignal.timeout(safeTimeoutMs),
       });
+
+      if (response.status === 304) {
+        throw new EmptyCdnResponseError(
+          `BCB SGS series ${seriesId} (${url}) returned HTTP 304 with no body`,
+        );
+      }
 
       if (!response.ok) {
         const message = `BCB SGS series ${seriesId} returned HTTP ${response.status}`;
@@ -284,9 +333,16 @@ async function fetchBcbSeries(
         throw new NonRetryableBcbError(message);
       }
 
+      const body = await response.text();
+      if (body.trim() === "") {
+        throw new EmptyCdnResponseError(
+          `BCB SGS series ${seriesId} (${url}) returned HTTP ${response.status} with an empty body`,
+        );
+      }
+
       let rawJson: unknown;
       try {
-        rawJson = await response.json();
+        rawJson = JSON.parse(body);
       } catch (parseErr) {
         throw new NonRetryableBcbError(
           `BCB SGS series ${seriesId} returned invalid JSON: ${
@@ -302,9 +358,12 @@ async function fetchBcbSeries(
         );
       }
 
-      return normalizeSeriesPoints(parsed.data, count);
+      return parsed.data;
     } catch (error) {
-      if (error instanceof NonRetryableBcbError) {
+      if (
+        error instanceof NonRetryableBcbError ||
+        error instanceof EmptyCdnResponseError
+      ) {
         throw error;
       }
 
