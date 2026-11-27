@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -137,6 +138,12 @@ function SummaryCard({
 }
 
 export default async function CheckInsPage() {
+  // Auth.js usa aleatoriedade criptográfica ao validar a sessão; adia isso para a
+
+  // requisição em vez de rodar no prerender (#63).
+
+  await connection();
+
   const user = await getSessionUser();
   if (!user) {
     redirect("/");
