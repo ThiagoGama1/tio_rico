@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { NewCheckInButton } from "@/components/pages/newCheckInButton";
 import { NavigationMenu } from "@/components/ui/navigationMenu";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DataLine } from "@/components/ui/dataLine";
 import { getSessionUser } from "@/lib/auth/session";
@@ -117,7 +117,9 @@ function OverviewUnavailable({ message }: { message: string }) {
             Visão geral
           </h1>
         </div>
-        <NewCheckInButton />
+        <Button render={<Link href="/check-ins/new" />} nativeButton={false} size="lg">
+          Novo check-in
+        </Button>
       </header>
       <OverviewMessage>{message}</OverviewMessage>
     </OverviewShell>
@@ -161,7 +163,14 @@ export default async function OverviewPage() {
               Seu acompanhamento é construído a partir da carteira e dos check-ins mensais.
             </p>
           </div>
-          <NewCheckInButton className="shrink-0" />
+          <Button
+            render={<Link href="/check-ins/new" />}
+            nativeButton={false}
+            size="lg"
+            className="shrink-0"
+          >
+            Novo check-in
+          </Button>
         </header>
 
         <section
