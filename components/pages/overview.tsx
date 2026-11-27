@@ -34,7 +34,8 @@ type EvolutionResponse = Omit<OverviewData, "indicators"> & {
 type OverviewState =
   | { status: "loading" }
   | { status: "ready"; data: OverviewData }
-  | { status: "unavailable"; message: string };
+  | { status: "unavailable"; message: string }
+  | { status: "needsProfile" };
 
 class ApiRequestError extends Error {
   constructor(
@@ -113,7 +114,13 @@ function OverviewShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function OverviewUnavailable({ message }: { message: string }) {
+function OverviewUnavailable({
+  message,
+  needsProfile = false,
+}: {
+  message: string;
+  needsProfile?: boolean;
+}) {
   return (
     <OverviewShell>
       <header className="mb-8 flex items-start justify-between gap-6">
@@ -125,9 +132,15 @@ function OverviewUnavailable({ message }: { message: string }) {
             Visão geral
           </h1>
         </div>
-        <Button render={<Link href="/check-ins/new" />} nativeButton={false} size="lg">
-          Novo check-in
-        </Button>
+        {needsProfile ? (
+          <Button render={<Link href="/onboarding" />} nativeButton={false} size="lg">
+            Concluir cadastro
+          </Button>
+        ) : (
+          <Button render={<Link href="/check-ins/new" />} nativeButton={false} size="lg">
+            Novo check-in
+          </Button>
+        )}
       </header>
       <OverviewMessage>{message}</OverviewMessage>
     </OverviewShell>
@@ -165,6 +178,13 @@ export function Overview() {
           return;
         }
 
+        // 404 = usuário ainda sem perfil: orienta a concluir o cadastro em vez
+        // de mostrar a mensagem técnica da API (#62).
+        if (error instanceof ApiRequestError && error.status === 404) {
+          setState({ status: "needsProfile" });
+          return;
+        }
+
         setState({
           status: "unavailable",
           message:
@@ -186,6 +206,15 @@ export function Overview() {
 
   if (state.status === "unavailable") {
     return <OverviewUnavailable message={state.message} />;
+  }
+
+  if (state.status === "needsProfile") {
+    return (
+      <OverviewUnavailable
+        needsProfile
+        message="Conclua seu perfil de investidor para ver sua visão geral."
+      />
+    );
   }
 
   const { checkIns, evolution, indicators, profile } = state.data;
