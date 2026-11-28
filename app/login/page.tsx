@@ -1,4 +1,5 @@
 import { FormLogin } from "@/components/pages/formLogin";
+import { isGoogleAuthConfigured } from "@/lib/auth/google";
 import Image from "next/image";
 
 export default function Login() {
@@ -14,7 +15,7 @@ export default function Login() {
         />
       </section>
       <section className="flex flex-1 items-center justify-center p-6 sm:p-10">
-        <FormLogin />
+        <FormLogin googleEnabled={isGoogleAuthConfigured()} />
       </section>
     </div>
   );
