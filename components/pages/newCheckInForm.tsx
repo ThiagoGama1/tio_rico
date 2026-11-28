@@ -45,18 +45,9 @@ function formatCents(value: number) {
   return currencyFormatter.format(value / 100);
 }
 
+// "1.500" = R$ 1.500,00 (ponto é milhar no pt-BR, #65)
 function centsFromCurrency(value: string) {
-  const normalized = value.trim().replace(/[^\d,.-]/g, "");
-  if (!normalized) return 0;
-
-  const decimalValue = normalized.includes(",")
-    ? normalized.replace(/\./g, "").replace(",", ".")
-    : normalized;
-  const amount = Number(decimalValue);
-
-  return Number.isFinite(amount) && amount >= 0
-    ? Math.round(amount * 100)
-    : 0;
+  return parseReaisParaCentavos(value) ?? 0;
 }
 
 function createEmptyPosition(): PositionDraft {

@@ -33,7 +33,7 @@ export function NavigationMenu() {
       </Link>
 
       <nav aria-label="Navegação principal" className="mt-22">
-        <ul className="flex h-[60dvh] flex-col justify-between">
+        <ul className="flex h-[60dvh] flex-col gap-10">
           {navigationItems.map((item) => {
             const isCurrentPage = pathname === item.href;
 
@@ -42,12 +42,11 @@ export function NavigationMenu() {
                 <Button
                   render={<Link href={item.href} />}
                   nativeButton={false}
-                  variant="ghost"
+                  variant="outline"
                   aria-current={isCurrentPage ? "page" : undefined}
                   className={cn(
-                    "h-12 w-full justify-start px-2 text-left text-2xl font-medium text-muted font-k2d",
-                    "hover:bg-transparent hover:text-foreground",
-                    isCurrentPage && "text-foreground",
+                    "justify-start px-2 w-36 text-left h1 font-medium text-[1rem]",
+                    isCurrentPage && "text-primary",
                   )}
                 >
                   {item.label}

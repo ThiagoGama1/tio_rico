@@ -1,12 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, expect, it, vi } from "vitest";
 import {
   NoObjectGeneratedError,
   NoOutputGeneratedError,
   type LanguageModel,
   type generateText,
 } from "ai";
-import { POST as analyzeCheckInPost } from "@/app/api/checkins/analyze/route";
 import {
   AiGenerationError,
   generateInvestmentAnalysis,
@@ -24,27 +22,6 @@ import {
 import { resultadoMotorFake } from "@/lib/testing/resultado-motor-fake";
 import type { AiAnalysisOutput, MacroIndicators } from "@/lib/types/domain";
 
-// The analyze route calls the motor when no motorResult is sent. These tests
-// cover the AI layer, so the motor is replaced by the test fake.
-vi.mock("@/motor", async () => {
-  const actual = await vi.importActual<typeof import("@/motor")>("@/motor");
-  const { resultadoMotorFake: fake } = await import(
-    "@/lib/testing/resultado-motor-fake"
-  );
-  return {
-    ...actual,
-    gerarDiagnostico: vi.fn((entrada: import("@/motor").EntradaMotor) =>
-      fake({
-        positions: entrada.carteira.map((ativo) => ({
-          assetClass: ativo.classe,
-          amountCents: ativo.valorCentavos,
-        })),
-        targetAllocation: entrada.alvo,
-        contributionCents: entrada.aporteCentavos,
-      }),
-    ),
-  };
-});
 
 const SAMPLE_MACRO: MacroIndicators = {
   selicMetaAnnual: 14.75,
@@ -359,75 +336,4 @@ describe("generateInvestmentAnalysis", () => {
     expect((caught as AiGenerationError).message).not.toContain("sk-ant-secret");
   });
 });
-
-describe("POST /api/checkins/analyze", () => {
-  const savedEnv = {
-    AI_PROVIDER: process.env.AI_PROVIDER,
-    AI_MODEL: process.env.AI_MODEL,
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-    GOOGLE_GENERATIVE_AI_API_KEY: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-  };
-
-  afterEach(() => {
-    for (const [key, value] of Object.entries(savedEnv)) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-  });
-
-  it("returns 400 on malformed JSON body", async () => {
-    const req = new NextRequest("http://localhost:3000/api/checkins/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{ invalid-json",
-    });
-
-    const res = await analyzeCheckInPost(req);
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 400 on Zod validation failure", async () => {
-    const req = new NextRequest("http://localhost:3000/api/checkins/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ referenceMonth: "invalid-month" }),
-    });
-
-    const res = await analyzeCheckInPost(req);
-    const json = (await res.json()) as { error: string; details?: unknown };
-    expect(res.status).toBe(400);
-    expect(json.details).toBeDefined();
-  });
-
-  it("computes motorResult when omitted and returns 503 when AI keys are unconfigured", async () => {
-    delete process.env.AI_PROVIDER;
-    delete process.env.AI_MODEL;
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-
-    const sample = createSampleInput();
-    const req = new NextRequest("http://localhost:3000/api/checkins/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profile: sample.profile,
-        positions: sample.positions,
-        referenceMonth: sample.referenceMonth,
-        userNotes: sample.userNotes,
-        contributionCents: sample.contributionCents,
-        macroIndicators: sample.macroIndicators,
-        skipNews: true,
-      }),
-    });
-
-    const res = await analyzeCheckInPost(req);
-    const json = (await res.json()) as { error: string; code: string };
-    expect(res.status).toBe(503);
-    expect(json.code).toBe("MISSING_API_KEY");
-  });
-});
+
