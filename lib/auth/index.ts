@@ -13,6 +13,7 @@ import { consumirLimite, ipDaRequisicao } from "@/lib/security/rate-limit";
 
 export const DEMO_PROVIDER_ID = "demo";
 export const EMAIL_CODE_PROVIDER_ID = "email-code";
+export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 /**
  * Auth.js v5.
@@ -33,7 +34,10 @@ export const EMAIL_CODE_PROVIDER_ID = "email-code";
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   trustHost: true,
   ...(isDatabaseConfigured() ? { adapter: PrismaAdapter(getPrisma()) } : {}),
-  session: { strategy: "jwt" },
+  // JWT sessions cannot be revoked on logout (the cookie is only removed from
+  // the browser), so a copied token stays valid until it expires. 7 days
+  // instead of the default 30 limits how long a stolen token is useful.
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_SECONDS },
   providers: [
     Credentials({
       id: EMAIL_CODE_PROVIDER_ID,
