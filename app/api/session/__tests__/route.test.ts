@@ -10,7 +10,20 @@ const mocks = vi.hoisted(() => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
   sendEmailLoginCode: vi.fn<(email: string) => Promise<void>>(),
+  consumirLimite: vi.fn(),
+  limiteEsgotado: vi.fn(),
 }));
+
+vi.mock("@/lib/security/rate-limit", () => ({
+  consumirLimite: mocks.consumirLimite,
+  limiteEsgotado: mocks.limiteEsgotado,
+  ipDaRequisicao: (headers: Headers) =>
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "desconhecido",
+}));
+
+function limite(permitido: boolean) {
+  return { permitido, restante: permitido ? 1 : 0, reiniciaEm: new Date() };
+}
 
 vi.mock("@/lib/auth", () => ({
   DEMO_PROVIDER_ID: "demo",
@@ -21,6 +34,8 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/auth/email-code", () => ({
   sendEmailLoginCode: mocks.sendEmailLoginCode,
+  chaveFalhasCodigo: (email: string) => `login-falha:${email}`,
+  MAX_FALHAS_CODIGO: 5,
 }));
 
 vi.mock("@/lib/auth/session", () => ({
@@ -57,6 +72,85 @@ function makeJsonPostRequest(url: string, body: unknown): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.isDatabaseConfigured.mockReturnValue(true);
+  mocks.consumirLimite.mockResolvedValue(limite(true));
+  mocks.limiteEsgotado.mockResolvedValue(false);
+});
+
+describe("rate limits on e-mail login", () => {
+  const originalResendKey = process.env.AUTH_RESEND_KEY;
+  beforeEach(() => {
+    process.env.AUTH_RESEND_KEY = "re_test";
+  });
+  afterEach(() => {
+    process.env.AUTH_RESEND_KEY = originalResendKey;
+  });
+
+  it("limits code requests per IP and per e-mail", async () => {
+    const request = new NextRequest("http://localhost:3000/api/session/email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-forwarded-for": "9.9.9.9, 10.0.0.1" },
+      body: JSON.stringify({ email: "Ana@Example.com" }),
+    });
+
+    const response = await POST_EMAIL(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.consumirLimite).toHaveBeenCalledWith(
+      "envio-ip:9.9.9.9",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(mocks.consumirLimite).toHaveBeenCalledWith(
+      "envio-email:ana@example.com",
+      1,
+      60_000,
+    );
+  });
+
+  it("returns 429 and sends nothing when the IP is over the limit", async () => {
+    mocks.consumirLimite.mockResolvedValueOnce(limite(false));
+
+    const response = await POST_EMAIL(
+      makeJsonPostRequest("http://localhost:3000/api/session/email", {
+        email: "ana@example.com",
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(mocks.sendEmailLoginCode).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 when a code was requested for the same e-mail less than a minute ago", async () => {
+    mocks.consumirLimite
+      .mockResolvedValueOnce(limite(true))
+      .mockResolvedValueOnce(limite(false));
+
+    const response = await POST_EMAIL(
+      makeJsonPostRequest("http://localhost:3000/api/session/email", {
+        email: "ana@example.com",
+      }),
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(json.error).toContain("1 minuto");
+    expect(mocks.sendEmailLoginCode).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 on verify while the e-mail is locked by wrong codes", async () => {
+    mocks.limiteEsgotado.mockResolvedValue(true);
+
+    const response = await POST_VERIFY_EMAIL(
+      makeJsonPostRequest("http://localhost:3000/api/session/email/verify", {
+        email: "ana@example.com",
+        code: "123456",
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(mocks.limiteEsgotado).toHaveBeenCalledWith("login-falha:ana@example.com", 5);
+    expect(mocks.signIn).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /api/session", () => {

@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { ensureDemoUser } from "@/lib/auth/demo";
 import { verifyEmailLoginCode } from "@/lib/auth/email-code";
 import { getPrisma, isDatabaseConfigured } from "@/lib/db/prisma";
+import { ipDaRequisicao } from "@/lib/security/rate-limit";
 
 export const DEMO_PROVIDER_ID = "demo";
 export const EMAIL_CODE_PROVIDER_ID = "email-code";
@@ -35,8 +36,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
         email: { label: "E-mail", type: "email" },
         code: { label: "Código", type: "text" },
       },
-      async authorize(credentials) {
-        return verifyEmailLoginCode(credentials.email, credentials.code);
+      async authorize(credentials, request) {
+        return verifyEmailLoginCode(
+          credentials.email,
+          credentials.code,
+          ipDaRequisicao(request?.headers),
+        );
       },
     }),
     Credentials({
