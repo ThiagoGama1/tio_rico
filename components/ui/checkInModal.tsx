@@ -40,6 +40,11 @@ function formatCurrency(cents: number) {
   }).format(cents / 100);
 }
 
+function currentMonthValue() {
+  const currentDate = new Date();
+  return `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function getMonthOptions() {
   const currentDate = new Date();
 
@@ -57,9 +62,8 @@ export function CheckInModal({
 }: CheckInModalProps) {
   const monthOptions = useMemo(() => getMonthOptions(), []);
   const [open, setOpen] = useState(false);
-  const [referenceMonth, setReferenceMonth] = useState(
-    monthOptions.at(-1)?.value ?? "",
-  );
+  // A lista vai de 6 meses antes a 6 depois; o padrão é o mês atual, não o último da lista (#68).
+  const [referenceMonth, setReferenceMonth] = useState(currentMonthValue);
   const [contributionCents, setContributionCents] = useState(250000);
   const [userNotes, setUserNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
