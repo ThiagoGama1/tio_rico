@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { parseReaisParaCentavos } from "@/lib/format/moeda";
 import {
   ASSET_CLASSES,
   ASSET_CLASS_LABELS,
