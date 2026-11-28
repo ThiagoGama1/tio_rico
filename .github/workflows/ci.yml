@@ -1,0 +1,52 @@
+name: CI
+
+# Roda em todo PR e em todo push na main: typecheck, lint, testes e build
+# (o build é o mesmo que a Vercel roda). Não precisa de banco nem de chaves:
+# os testes usam mocks e o build funciona sem DATABASE_URL.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      VITE_CONFIG_NATIVE_IGNORE_WARNING: "true"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # o postinstall já roda `prisma generate`
+      - name: Instalar dependências
+        run: npm ci
+
+      # gera os tipos de rota do Next (PageProps, RouteContext), que o tsc precisa
+      - name: Gerar tipos de rota
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
