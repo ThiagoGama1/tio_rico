@@ -2,6 +2,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import {
+  aplicarValidadeDemo,
   chaveDemosPorIp,
   criarContaDemo,
   JANELA_DEMOS_MS,
@@ -72,6 +73,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
     }),
   ],
   callbacks: {
+    // Demo sessions end with their copy (24 h), even though sessions roll.
+    jwt({ token, account }) {
+      return aplicarValidadeDemo(token, account?.provider);
+    },
     session({ session, token }) {
       if (token.sub && session.user) {
         session.user.id = token.sub;

@@ -6,6 +6,7 @@ vi.mock("@/lib/db/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/history/repository", () => ({ DEMO_PROFILE_ID: "demo-marina-costa" }));
 
 import {
+  aplicarValidadeDemo,
   apagarDemosAntigas,
   criarContaDemo,
   DEMO_TTL_MS,
@@ -177,5 +178,30 @@ describe("isDemoEmail", () => {
     expect(isDemoEmail("demo-1@demo.tiorico.app")).toBe(true);
     expect(isDemoEmail("ana@example.com")).toBe(false);
     expect(isDemoEmail(null)).toBe(false);
+  });
+});
+
+describe("aplicarValidadeDemo", () => {
+  const agora = 1_800_000_000_000;
+
+  it("stamps an absolute deadline on the demo sign-in", () => {
+    const token = aplicarValidadeDemo({ sub: "u1" }, "demo", agora);
+    expect(token).toEqual({ sub: "u1", demoExpiraEm: agora + DEMO_TTL_MS });
+  });
+
+  it("keeps the demo session until the deadline, even on later requests", () => {
+    const token = { sub: "u1", demoExpiraEm: agora + DEMO_TTL_MS };
+    expect(aplicarValidadeDemo(token, undefined, agora + DEMO_TTL_MS - 1)).toEqual(token);
+  });
+
+  it("ends the demo session at the deadline (same age the cleanup deletes)", () => {
+    const token = { sub: "u1", demoExpiraEm: agora + DEMO_TTL_MS };
+    expect(aplicarValidadeDemo(token, undefined, agora + DEMO_TTL_MS)).toBeNull();
+  });
+
+  it("never touches regular sessions", () => {
+    const token = { sub: "u2" };
+    expect(aplicarValidadeDemo(token, "email-code", agora)).toEqual(token);
+    expect(aplicarValidadeDemo(token, undefined, agora + 10 * DEMO_TTL_MS)).toEqual(token);
   });
 });

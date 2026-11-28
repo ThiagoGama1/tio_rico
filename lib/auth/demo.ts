@@ -179,3 +179,29 @@ export async function apagarDemosAntigas(
     return { usuarios: usuarios.count, perfis: perfis.count };
   });
 }
+
+/**
+ * Keeps a demo session from outliving its copy.
+ *
+ * Auth.js re-signs the JWT on every request with a fresh expiry (sessions are
+ * rolling), so `session.maxAge` alone would keep a demo session alive after the
+ * cleanup deleted its user. On the demo sign-in the token gets an absolute
+ * deadline (DEMO_TTL_MS, the same age the cleanup uses); after it, returning
+ * `null` makes Auth.js drop the session and clear the cookie.
+ *
+ * `provedor` is the provider of the current sign-in (only set on sign-in).
+ */
+export function aplicarValidadeDemo<T extends object>(
+  token: T,
+  provedor: string | undefined,
+  agora = Date.now(),
+): (T & { demoExpiraEm?: number }) | null {
+  if (provedor === "demo") {
+    return { ...token, demoExpiraEm: agora + DEMO_TTL_MS };
+  }
+  const prazo = (token as { demoExpiraEm?: unknown }).demoExpiraEm;
+  if (typeof prazo === "number" && agora >= prazo) {
+    return null;
+  }
+  return token as T & { demoExpiraEm?: number };
+}
