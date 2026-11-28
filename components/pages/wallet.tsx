@@ -281,7 +281,7 @@ export function Wallet() {
   const isLoading = status === "loading";
 
   return (
-    <div className="flex min-h-dvh bg-[#faf9f7]">
+    <div className="flex min-h-dvh bg-[#faf9f7] max-lg:flex-col">
       <NavigationMenu />
       <section className="min-w-0 flex-1 px-6 py-8 lg:px-10 lg:py-12 xl:px-14">
         <header className="flex flex-col justify-between gap-6 sm:flex-row sm:items-start">

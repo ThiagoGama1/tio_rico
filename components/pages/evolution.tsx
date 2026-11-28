@@ -74,7 +74,7 @@ async function getEvolution(signal: AbortSignal): Promise<EvolutionResponse> {
 
 function EvolutionShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-dvh bg-[#faf9f7]">
+    <div className="flex min-h-dvh bg-[#faf9f7] max-lg:flex-col">
       <NavigationMenu />
       <section className="min-w-0 flex-1 px-6 py-8 lg:px-10 lg:py-12 xl:px-14">
         {children}
