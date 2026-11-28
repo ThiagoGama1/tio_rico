@@ -133,7 +133,7 @@ npm run db:seed
 - Todas as rotas da API executam no **runtime Node.js padrão** com **Vercel Fluid Compute**.
 - **Não utilize Edge Runtime (`runtime = "edge"`):** o driver `pg` (`pg.Pool`), `@prisma/adapter-pg` e `attachDatabasePool` (`@vercel/functions`) dependem de APIs nativas de Node.js.
 - Em `lib/db/prisma.ts`, `attachDatabasePool(pool)` integra o ciclo de vida do pool PostgreSQL ao Fluid Compute, reutilizando conexões entre invocações concorrentes e fechando conexões ociosas antes da suspensão da instância.
-- As rotas de análise com IA (`/api/checkins` e `/api/checkins/analyze`) se beneficiam automaticamente dos limites ampliados de execução do Fluid Compute para chamadas de LLM + Firecrawl.
+- As rotas de análise com IA (`/api/checkins`) se beneficia automaticamente dos limites ampliados de execução do Fluid Compute para chamadas de LLM + Firecrawl.
 
 ### Next.js 16.4 com `cacheComponents: true`
 - O projeto usa `cacheComponents: true` e `partialPrefetching: true` em `next.config.ts`.
@@ -210,14 +210,6 @@ curl.exe -b cookies.txt -X POST "https://SEU-DOMINIO.vercel.app/api/checkins" \
   -d "{\"referenceMonth\":\"2026-06\",\"userNotes\":\"Check-in de validacao pos-deploy\",\"contributionCents\":150000,\"includeNews\":true,\"includeAiAnalysis\":true}"
 ```
 **Esperado:** HTTP `201` retornando o check-in salvo com `id`, `motorResult`, `macroSnapshot`, `aiAnalysis` e `positions` (sem sessão retorna `401`).
-
-### 6.5. Análise Stateless com IA (`/api/checkins/analyze`)
-```bash
-curl.exe -X POST "https://SEU-DOMINIO.vercel.app/api/checkins/analyze" \
-  -H "Content-Type: application/json" \
-  -d "{\"profile\":{\"name\":\"Marina Costa\",\"riskProfile\":\"moderado\",\"horizonMonths\":60,\"goals\":[{\"title\":\"Reserva e independencia\"}],\"targetAllocation\":{\"renda_fixa_pos\":50,\"acoes\":30,\"fiis\":20}},\"positions\":[{\"name\":\"Tesouro Selic\",\"assetClass\":\"renda_fixa_pos\",\"amountCents\":700000},{\"name\":\"ETF Ibovespa\",\"assetClass\":\"acoes\",\"amountCents\":200000},{\"name\":\"Carteira FIIs\",\"assetClass\":\"fiis\",\"amountCents\":100000}],\"referenceMonth\":\"2026-06\",\"userNotes\":\"Teste de analise apos deploy\",\"contributionCents\":100000,\"macroIndicators\":{\"selicMetaAnnual\":14.75,\"selicDate\":\"2026-05-01\",\"cdiAnnual\":14.65,\"cdiDaily\":0.0542,\"cdiDate\":\"2026-05-01\",\"ipcaMonthly\":0.45,\"ipca12m\":5.0,\"ipcaDate\":\"2026-04-01\",\"ipcaHistory\":[{\"date\":\"2026-04-01\",\"value\":0.45}],\"source\":\"bcb_sgs\",\"fetchedAt\":\"2026-05-02T12:00:00.000Z\",\"isStale\":false},\"skipNews\":false}"
-```
-**Esperado:** HTTP `200` com `analysis` (JSON estruturado contendo `resumoExecutivo`, `opcoesDeAjuste` e `disclaimer` educacional), `motorResult`, `news` e `meta` (`provider`, `modelId`).
 
 ---
 

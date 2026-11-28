@@ -10,6 +10,7 @@ import {
   jsonError,
   jsonOk,
   profileNotFound,
+  readJsonBody,
   unauthorized,
 } from "@/lib/api/responses";
 import { getSessionUser } from "@/lib/auth/session";
@@ -120,14 +121,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return unauthorized();
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonError(400, "Corpo da requisição deve ser um JSON válido.");
-  }
+  const read = await readJsonBody(request);
+  if (!read.ok) return read.response;
 
-  const parsed = PostCheckInRequestSchema.safeParse(body);
+  const parsed = PostCheckInRequestSchema.safeParse(read.body);
   if (!parsed.success) {
     return jsonError(400, "Dados inválidos para criação do check-in.", {
       details: z.flattenError(parsed.error),
@@ -137,7 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!isDatabaseConfigured()) {
     return jsonError(
       503,
-      "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins ou utilize POST /api/checkins/analyze para análise stateless sem persistência.",
+      "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins.",
     );
   }
 

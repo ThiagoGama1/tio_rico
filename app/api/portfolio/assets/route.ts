@@ -12,6 +12,7 @@ import { isDatabaseConfigured } from "@/lib/db/prisma";
 import {
   createAssetForUser,
   listAssetsForUser,
+  PortfolioLimitError,
 } from "@/lib/portfolio/repository";
 import { CreatePortfolioAssetRequestSchema } from "@/lib/types/account";
 
@@ -55,7 +56,10 @@ export async function POST(request: NextRequest) {
     const asset = await createAssetForUser(user.id, parsed.data);
     if (!asset) return profileNotFound();
     return jsonOk({ asset }, 201);
-  } catch {
+  } catch (error) {
+    if (error instanceof PortfolioLimitError) {
+      return jsonError(400, error.message);
+    }
     return jsonError(500, "Falha ao salvar o investimento no banco de dados.");
   }
 }

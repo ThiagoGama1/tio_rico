@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   isDatabaseConfigured: vi.fn<() => boolean>(),
   getPrisma: vi.fn(),
+  consumirLimite: vi.fn(),
+  limiteEsgotado: vi.fn(),
+  zerarLimite: vi.fn(),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -10,7 +13,21 @@ vi.mock("@/lib/db/prisma", () => ({
   isDatabaseConfigured: mocks.isDatabaseConfigured,
 }));
 
-import { sendEmailLoginCode, verifyEmailLoginCode } from "@/lib/auth/email-code";
+vi.mock("@/lib/security/rate-limit", () => ({
+  consumirLimite: mocks.consumirLimite,
+  limiteEsgotado: mocks.limiteEsgotado,
+  zerarLimite: mocks.zerarLimite,
+}));
+
+import {
+  MAX_FALHAS_CODIGO,
+  sendEmailLoginCode,
+  verifyEmailLoginCode,
+} from "@/lib/auth/email-code";
+
+function limite(restante: number, permitido = true) {
+  return { permitido, restante, reiniciaEm: new Date(Date.now() + 60_000) };
+}
 
 const prisma = {
   user: {
@@ -34,6 +51,9 @@ beforeEach(() => {
   prisma.user.upsert.mockResolvedValue({ id: "user-1", email: "ana@example.com" });
   prisma.verificationToken.create.mockResolvedValue({});
   prisma.verificationToken.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.limiteEsgotado.mockResolvedValue(false);
+  mocks.consumirLimite.mockResolvedValue(limite(10));
+  mocks.zerarLimite.mockResolvedValue(undefined);
   process.env.AUTH_RESEND_KEY = "re_test";
   process.env.AUTH_SECRET = "test-secret";
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
@@ -104,5 +124,60 @@ describe("verifyEmailLoginCode", () => {
     await expect(verifyEmailLoginCode("ana@example.com", "123")).resolves.toBeNull();
     await expect(verifyEmailLoginCode("ana@example.com", "123456")).resolves.toBeNull();
     expect(prisma.user.upsert).not.toHaveBeenCalled();
+  });
+
+  it("counts a wrong code as a failure for that e-mail", async () => {
+    prisma.verificationToken.deleteMany.mockResolvedValue({ count: 0 });
+
+    await verifyEmailLoginCode("ana@example.com", "111111", "1.2.3.4");
+
+    expect(mocks.consumirLimite).toHaveBeenCalledWith(
+      "login-ip:1.2.3.4",
+      expect.any(Number),
+      expect.any(Number),
+    );
+    expect(mocks.consumirLimite).toHaveBeenCalledWith(
+      "login-falha:ana@example.com",
+      MAX_FALHAS_CODIGO,
+      expect.any(Number),
+    );
+  });
+
+  it("discards the pending code on the last allowed wrong attempt", async () => {
+    prisma.verificationToken.deleteMany.mockResolvedValue({ count: 0 });
+    mocks.consumirLimite
+      .mockResolvedValueOnce(limite(20)) // por IP
+      .mockResolvedValueOnce(limite(0)); // 5a falha do e-mail
+
+    await expect(verifyEmailLoginCode("ana@example.com", "111111")).resolves.toBeNull();
+
+    // 1a chamada: o palpite errado; 2a: descarta o codigo pendente do e-mail
+    expect(prisma.verificationToken.deleteMany).toHaveBeenCalledTimes(2);
+    expect(prisma.verificationToken.deleteMany).toHaveBeenLastCalledWith({
+      where: { identifier: "email-code:ana@example.com" },
+    });
+  });
+
+  it("refuses even the right code while the e-mail is locked", async () => {
+    mocks.limiteEsgotado.mockResolvedValue(true);
+
+    await expect(verifyEmailLoginCode("ana@example.com", "123456")).resolves.toBeNull();
+
+    expect(prisma.verificationToken.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.user.upsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the IP ran out of attempts, without touching the code", async () => {
+    mocks.consumirLimite.mockResolvedValueOnce(limite(0, false));
+
+    await expect(verifyEmailLoginCode("ana@example.com", "123456")).resolves.toBeNull();
+
+    expect(prisma.verificationToken.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("clears the failure counter after a successful login", async () => {
+    await verifyEmailLoginCode("ana@example.com", "123456");
+
+    expect(mocks.zerarLimite).toHaveBeenCalledWith("login-falha:ana@example.com");
   });
 });

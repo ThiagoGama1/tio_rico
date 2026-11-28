@@ -8,6 +8,7 @@ const prisma = vi.hoisted(() => ({
     findMany: vi.fn(),
     findFirst: vi.fn(),
     create: vi.fn(),
+    count: vi.fn(),
     updateMany: vi.fn(),
     deleteMany: vi.fn(),
   },
@@ -23,6 +24,7 @@ import {
   deleteAssetForUser,
   getAssetForUser,
   listAssetsForUser,
+  PortfolioLimitError,
   updateAssetForUser,
 } from "@/lib/portfolio/repository";
 
@@ -44,6 +46,28 @@ const OWNED_BY_USER_1 = { profile: { userId: "user-1" } };
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.investorProfile.findUnique.mockResolvedValue({ id: "profile-1" });
+  prisma.portfolioAsset.count.mockResolvedValue(0);
+});
+
+describe("portfolio repository — size limit", () => {
+  it("refuses a new asset when the portfolio already has 100", async () => {
+    prisma.portfolioAsset.count.mockResolvedValue(100);
+
+    await expect(
+      createAssetForUser("user-1", { name: "Mais um", assetClass: "acoes", amountCents: 1 }),
+    ).rejects.toBeInstanceOf(PortfolioLimitError);
+    expect(prisma.portfolioAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("counts only the user's own portfolio", async () => {
+    prisma.portfolioAsset.create.mockResolvedValue(ROW);
+
+    await createAssetForUser("user-1", { name: "X", assetClass: "acoes", amountCents: 1 });
+
+    expect(prisma.portfolioAsset.count).toHaveBeenCalledWith({
+      where: { profileId: "profile-1" },
+    });
+  });
 });
 
 describe("portfolio repository — ownership", () => {

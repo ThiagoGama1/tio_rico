@@ -1,5 +1,10 @@
 import { getPrisma, isDatabaseConfigured } from "@/lib/db/prisma";
 import { EmailLoginCodeSchema } from "@/lib/types/account";
+import {
+  consumirLimite,
+  limiteEsgotado,
+  zerarLimite,
+} from "@/lib/security/rate-limit";
 
 const CODE_LENGTH = 6;
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -82,25 +87,79 @@ export async function sendEmailLoginCode(email: string) {
   }
 }
 
-/** Consumes a valid code and returns the persistent user for Auth.js. */
-export async function verifyEmailLoginCode(email: unknown, code: unknown) {
+/** Wrong codes allowed per e-mail before the pending code is discarded. */
+export const MAX_FALHAS_CODIGO = 5;
+/** Verification attempts allowed per IP in the same window. */
+export const MAX_TENTATIVAS_POR_IP = 30;
+export const JANELA_TENTATIVAS_MS = CODE_TTL_MS;
+
+export function chaveFalhasCodigo(email: string) {
+  return `login-falha:${email}`;
+}
+
+export function chaveTentativasIp(ip: string) {
+  return `login-ip:${ip}`;
+}
+
+/**
+ * Consumes a valid code and returns the persistent user for Auth.js.
+ *
+ * Brute-force protection (applies to `/api/session/email/verify` and to the
+ * native Auth.js callback, since both end up here):
+ * - after MAX_FALHAS_CODIGO wrong codes for an e-mail, the pending code is
+ *   deleted and that e-mail is locked until the window ends. Requesting a new
+ *   code does not reset the counter;
+ * - each IP gets MAX_TENTATIVAS_POR_IP attempts per window.
+ */
+export async function verifyEmailLoginCode(
+  email: unknown,
+  code: unknown,
+  ip = "desconhecido",
+) {
   const parsed = EmailLoginCodeSchema.safeParse({ email, code });
   if (!parsed.success || !isDatabaseConfigured()) {
     return null;
   }
 
   const { email: normalizedEmail, code: normalizedCode } = parsed.data;
+  const chaveFalhas = chaveFalhasCodigo(normalizedEmail);
+
+  if (await limiteEsgotado(chaveFalhas, MAX_FALHAS_CODIGO)) {
+    return null;
+  }
+
+  const porIp = await consumirLimite(
+    chaveTentativasIp(ip),
+    MAX_TENTATIVAS_POR_IP,
+    JANELA_TENTATIVAS_MS,
+  );
+  if (!porIp.permitido) {
+    return null;
+  }
+
+  const identifier = identifierFor(normalizedEmail);
   const deleted = await getPrisma().verificationToken.deleteMany({
     where: {
-      identifier: identifierFor(normalizedEmail),
+      identifier,
       token: await hashCode(normalizedCode),
       expires: { gt: new Date() },
     },
   });
 
   if (deleted.count !== 1) {
+    const falhas = await consumirLimite(
+      chaveFalhas,
+      MAX_FALHAS_CODIGO,
+      JANELA_TENTATIVAS_MS,
+    );
+    if (falhas.restante === 0) {
+      // Too many wrong guesses: throw the pending code away.
+      await getPrisma().verificationToken.deleteMany({ where: { identifier } });
+    }
     return null;
   }
+
+  await zerarLimite(chaveFalhas);
 
   return getPrisma().user.upsert({
     where: { email: normalizedEmail },
