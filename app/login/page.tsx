@@ -10,7 +10,7 @@ export default function Login() {
           width={600}
           height={300}
           alt="Logo Tio Rico"
-          src={"Logo-2.svg"}
+          src="/Logo-2.svg"
         />
       </section>
       <section className="flex flex-1 items-center justify-center p-6 sm:p-10">
