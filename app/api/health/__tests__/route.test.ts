@@ -26,6 +26,8 @@ const ENV_KEYS = [
   "AUTH_SECRET",
   "AUTH_RESEND_KEY",
   "AUTH_EMAIL_FROM",
+  "AUTH_GOOGLE_ID",
+  "AUTH_GOOGLE_SECRET",
 ] as const;
 
 type EnvSnapshot = Partial<Record<(typeof ENV_KEYS)[number], string>>;
@@ -80,6 +82,7 @@ describe("GET /api/health", () => {
       auth: {
         configured: false,
         emailLoginConfigured: false,
+        googleLoginConfigured: false,
       },
       firecrawl: {
         configured: false,
@@ -116,6 +119,8 @@ describe("GET /api/health", () => {
     process.env.FIRECRAWL_API_KEY = "fc-secret-key-98765";
     process.env.AUTH_SECRET = "super-secret-auth-token-value";
     process.env.AUTH_RESEND_KEY = "re_secret_resend_token";
+    process.env.AUTH_GOOGLE_ID = "google-client-id-123";
+    process.env.AUTH_GOOGLE_SECRET = "google-client-secret-top";
 
     const request = new NextRequest(
       "http://localhost:3000/api/health?strict=true",
@@ -141,6 +146,7 @@ describe("GET /api/health", () => {
     expect(body.checks.auth).toEqual({
       configured: true,
       emailLoginConfigured: true,
+      googleLoginConfigured: true,
     });
     expect(body.checks.firecrawl).toEqual({ configured: true });
     expect(body.checks.bcb).toEqual({ configured: true });
@@ -152,6 +158,7 @@ describe("GET /api/health", () => {
     expect(rawText).not.toContain("fc-secret-key-98765");
     expect(rawText).not.toContain("super-secret-auth-token-value");
     expect(rawText).not.toContain("re_secret_resend_token");
+    expect(rawText).not.toContain("google-client-secret-top");
     expect(rawText).not.toContain("postgresql://");
   });
 
@@ -175,6 +182,7 @@ describe("GET /api/health", () => {
     expect(body.checks.auth).toEqual({
       configured: true,
       emailLoginConfigured: false,
+      googleLoginConfigured: false,
     });
     expect(body.checks.firecrawl).toEqual({ configured: false });
     expect(rawText).not.toContain("gemini-secret-alias-key");
@@ -196,6 +204,7 @@ describe("GET /api/health", () => {
     expect(softBody.checks.auth).toEqual({
       configured: false,
       emailLoginConfigured: false,
+      googleLoginConfigured: false,
     });
 
     const strictRes = await GET(

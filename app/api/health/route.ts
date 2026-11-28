@@ -1,5 +1,6 @@
 import { type NextRequest, type NextResponse } from "next/server";
 import { jsonOk } from "@/lib/api/responses";
+import { isGoogleAuthConfigured } from "@/lib/auth/google";
 import { getPrisma, isDatabaseConfigured } from "@/lib/db/prisma";
 
 const DB_PING_TIMEOUT_MS = 3_000;
@@ -22,6 +23,7 @@ interface AiHealthCheck {
 interface AuthHealthCheck {
   configured: boolean;
   emailLoginConfigured: boolean;
+  googleLoginConfigured: boolean;
 }
 
 interface HealthResponse {
@@ -259,6 +261,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth: AuthHealthCheck = {
     configured: Boolean(process.env.AUTH_SECRET?.trim()),
     emailLoginConfigured: Boolean(process.env.AUTH_RESEND_KEY?.trim()),
+    googleLoginConfigured: isGoogleAuthConfigured(),
   };
   const firecrawl = {
     configured: Boolean(process.env.FIRECRAWL_API_KEY?.trim()),
