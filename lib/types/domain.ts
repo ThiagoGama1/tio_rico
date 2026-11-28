@@ -52,6 +52,11 @@ export type ReferenceMonth = z.infer<typeof ReferenceMonthSchema>;
 // Investor Profile & Portfolio Positions
 // =============================================================================
 
+// Limits on user-provided lists: they are stored in the database and sent to
+// the LLM on every check-in, so they must stay small.
+export const MAX_METAS = 20;
+export const MAX_POSICOES = 100;
+
 export const InvestorGoalSchema = z.object({
   title: z.string().trim().min(1).max(160),
   targetAmountCents: z.number().int().nonnegative().optional(),
@@ -74,7 +79,14 @@ export const TargetAllocationSchema = z
   );
 export type TargetAllocation = z.infer<typeof TargetAllocationSchema>;
 
-export const InvestorPreferencesSchema = z.record(z.string(), z.unknown());
+// Only the keys the app reads. Unknown keys are dropped, so the column cannot
+// be used to store arbitrary data.
+export const InvestorPreferencesSchema = z.object({
+  excluir: z.array(AssetClassSchema).max(ASSET_CLASSES.length).optional(),
+  excludeCrypto: z.boolean().optional(),
+  currency: z.string().trim().max(10).optional(),
+  rebalanceFrequency: z.string().trim().max(30).optional(),
+});
 export type InvestorPreferences = z.infer<typeof InvestorPreferencesSchema>;
 
 export const InvestorProfileInputSchema = z.object({
@@ -83,7 +95,7 @@ export const InvestorProfileInputSchema = z.object({
   riskProfile: RiskProfileSchema,
   horizonMonths: z.number().int().min(1).max(1200),
   monthlyIncomeCents: z.number().int().nonnegative().optional().nullable(),
-  goals: z.array(InvestorGoalSchema).default([]),
+  goals: z.array(InvestorGoalSchema).max(MAX_METAS).default([]),
   targetAllocation: TargetAllocationSchema,
   preferences: InvestorPreferencesSchema.optional().nullable(),
 });
@@ -344,7 +356,7 @@ export const CreateCheckInRequestSchema = z.object({
   referenceMonth: ReferenceMonthSchema,
   userNotes: z.string().max(4000).default(""),
   contributionCents: z.number().int().nonnegative(),
-  positions: z.array(PortfolioPositionInputSchema).optional(),
+  positions: z.array(PortfolioPositionInputSchema).max(MAX_POSICOES).optional(),
   includeNews: z.boolean().default(true),
   includeAiAnalysis: z.boolean().default(true),
 });

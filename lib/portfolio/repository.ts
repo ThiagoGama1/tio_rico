@@ -4,6 +4,7 @@ import type { PortfolioAssetRecord } from "@/lib/history/repository";
 import { getProfileIdForUser } from "@/lib/profile/repository";
 import {
   AssetClassSchema,
+  MAX_POSICOES,
   type AssetClass,
 } from "@/lib/types/domain";
 import type {
@@ -12,6 +13,14 @@ import type {
 } from "@/lib/types/account";
 
 type PrismaPortfolioAsset = Prisma.PortfolioAssetGetPayload<Record<string, never>>;
+
+/** The portfolio already has MAX_POSICOES assets. */
+export class PortfolioLimitError extends Error {
+  constructor() {
+    super(`A carteira já tem o máximo de ${MAX_POSICOES} investimentos.`);
+    this.name = "PortfolioLimitError";
+  }
+}
 
 const ASSET_ORDER_BY: Prisma.PortfolioAssetOrderByWithRelationInput[] = [
   { amountCents: "desc" },
@@ -85,6 +94,11 @@ export async function createAssetForUser(
   if (!profileId) return null;
 
   const prisma = getPrisma();
+  const existentes = await prisma.portfolioAsset.count({ where: { profileId } });
+  if (existentes >= MAX_POSICOES) {
+    throw new PortfolioLimitError();
+  }
+
   const row = await prisma.portfolioAsset.create({
     data: {
       profileId,
