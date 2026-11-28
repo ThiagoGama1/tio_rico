@@ -35,7 +35,9 @@ export function NavigationMenu() {
       <nav aria-label="Navegação principal" className="mt-22">
         <ul className="flex h-[60dvh] flex-col gap-10">
           {navigationItems.map((item) => {
-            const isCurrentPage = pathname === item.href;
+            // Subrotas também destacam o item (ex.: /check-ins/new e /check-ins/[id] em "Check-ins", #60).
+            const isCurrentPage =
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (
               <li key={item.href}>
