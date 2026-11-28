@@ -508,7 +508,7 @@ describe("POST /api/checkins", () => {
     expect(mocks.saveCheckIn.mock.calls[0][0].profileId).toBe(SAMPLE_PROFILE.id);
   });
 
-  it("returns 503 when database is unconfigured and suggests stateless analyze route", async () => {
+  it("returns 503 when database is unconfigured", async () => {
     mocks.isDatabaseConfigured.mockReturnValue(false);
 
     const response = await POST(
@@ -521,7 +521,7 @@ describe("POST /api/checkins", () => {
     const json = await response.json();
 
     expect(response.status).toBe(503);
-    expect(json.error).toContain("/api/checkins/analyze");
+    expect(json.error).toContain("DATABASE_URL");
     expect(mocks.saveCheckIn).not.toHaveBeenCalled();
   });
 

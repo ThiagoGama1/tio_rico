@@ -1,12 +1,11 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { parseReaisParaCentavos } from "@/lib/format/moeda";
-import { cn } from "@/lib/utils";
 import {
   ASSET_CLASSES,
   ASSET_CLASS_LABELS,
@@ -22,6 +21,10 @@ type PositionDraft = {
   indexerRate: number | null;
   liquidity: string | null;
 };
+
+// rowKey: chave estável da linha na tela (não vai para a API). Com a chave pelo
+// índice, remover uma linha fazia a de baixo herdar o valor da removida (#66).
+type PositionRow = PositionDraft & { rowKey: string; amountText: string };
 
 type NewCheckInFormProps = {
   initialPositions: PositionDraft[];
@@ -74,7 +77,14 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
   const router = useRouter();
   const [referenceMonth, setReferenceMonth] = useState(currentReferenceMonth);
   const [contribution, setContribution] = useState("0");
-  const [positions, setPositions] = useState(initialPositions);
+  const nextRowNumber = useRef(0);
+  const [positions, setPositions] = useState<PositionRow[]>(() =>
+    initialPositions.map((position, index) => ({
+      ...position,
+      rowKey: position.id ?? `initial-${index}`,
+      amountText: formatCents(position.amountCents),
+    })),
+  );
   const [includeNews, setIncludeNews] = useState(true);
   const [includeAiAnalysis, setIncludeAiAnalysis] = useState(true);
   const [syncPortfolioAssets, setSyncPortfolioAssets] = useState(true);
@@ -87,16 +97,28 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
     [positions],
   );
 
-  function updatePosition(index: number, patch: Partial<PositionDraft>) {
+  function updatePosition(rowKey: string, patch: Partial<PositionRow>) {
     setPositions((current) =>
-      current.map((position, currentIndex) =>
-        currentIndex === index ? { ...position, ...patch } : position,
+      current.map((position) =>
+        position.rowKey === rowKey ? { ...position, ...patch } : position,
       ),
     );
   }
 
-  function removePosition(index: number) {
-    setPositions((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  function addPosition() {
+    nextRowNumber.current += 1;
+    const empty = createEmptyPosition();
+    setPositions((current) => [
+      ...current,
+      { ...empty, rowKey: `new-${nextRowNumber.current}`, amountText: formatCents(empty.amountCents) },
+    ]);
+  }
+
+  function removePosition(rowKey: string) {
+    // a última linha não pode ser removida (o botão também fica desabilitado)
+    setPositions((current) =>
+      current.length <= 1 ? current : current.filter((position) => position.rowKey !== rowKey),
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -104,7 +126,19 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
     setError("");
 
     const contributionCents = centsFromCurrency(contribution);
-    const validPositions = positions.filter((position) => position.name.trim());
+    const validPositions = positions
+      .filter((position) => position.name.trim())
+      .map(
+        (position): PositionDraft => ({
+          id: position.id,
+          name: position.name,
+          assetClass: position.assetClass,
+          amountCents: position.amountCents,
+          indexer: position.indexer,
+          indexerRate: position.indexerRate,
+          liquidity: position.liquidity,
+        }),
+      );
     if (validPositions.length === 0) {
       setError("Informe ao menos uma posição para registrar o check-in.");
       return;
@@ -203,7 +237,7 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
             size="lg"
             className="w-auto px-5"
             disabled={isSubmitting}
-            onClick={() => setPositions((current) => [...current, createEmptyPosition()])}
+            onClick={addPosition}
           >
             Adicionar posição
           </Button>
@@ -215,18 +249,18 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
               Nenhuma posição informada. Adicione os investimentos que farão parte do check-in.
             </div>
           ) : (
-            positions.map((position, index) => (
+            positions.map((position) => (
               <article
-                key={position.id ?? `new-position-${index}`}
+                key={position.rowKey}
                 className="grid gap-4 rounded-xl border border-border p-5 lg:grid-cols-[minmax(0,1fr)_11rem_auto] lg:items-end"
               >
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <FieldLabel htmlFor={`name-${index}`}>Investimento</FieldLabel>
+                    <FieldLabel htmlFor={`name-${position.rowKey}`}>Investimento</FieldLabel>
                     <input
-                      id={`name-${index}`}
+                      id={`name-${position.rowKey}`}
                       value={position.name}
-                      onChange={(event) => updatePosition(index, { name: event.target.value })}
+                      onChange={(event) => updatePosition(position.rowKey, { name: event.target.value })}
                       disabled={isSubmitting}
                       placeholder="Nome do ativo"
                       className="mt-2 h-10 w-full border-b border-border bg-transparent font-k2d text-base text-foreground outline-none placeholder:text-muted focus:border-(--green-1) disabled:cursor-not-allowed disabled:opacity-50"
@@ -234,12 +268,12 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
                     />
                   </div>
                   <div>
-                    <FieldLabel htmlFor={`asset-class-${index}`}>Classe</FieldLabel>
+                    <FieldLabel htmlFor={`asset-class-${position.rowKey}`}>Classe</FieldLabel>
                     <select
-                      id={`asset-class-${index}`}
+                      id={`asset-class-${position.rowKey}`}
                       value={position.assetClass}
                       onChange={(event) =>
-                        updatePosition(index, { assetClass: event.target.value as AssetClass })
+                        updatePosition(position.rowKey, { assetClass: event.target.value as AssetClass })
                       }
                       disabled={isSubmitting}
                       className="mt-2 h-10 w-full border-b border-border bg-transparent font-k2d text-base text-foreground outline-none focus:border-(--green-1) disabled:cursor-not-allowed disabled:opacity-50"
@@ -253,13 +287,16 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
                   </div>
                 </div>
                 <div>
-                  <FieldLabel htmlFor={`amount-${index}`}>Valor atual</FieldLabel>
+                  <FieldLabel htmlFor={`amount-${position.rowKey}`}>Valor atual</FieldLabel>
                   <input
-                    id={`amount-${index}`}
+                    id={`amount-${position.rowKey}`}
                     inputMode="decimal"
-                    defaultValue={formatCents(position.amountCents)}
+                    value={position.amountText}
                     onChange={(event) =>
-                      updatePosition(index, { amountCents: centsFromCurrency(event.target.value) })
+                      updatePosition(position.rowKey, {
+                        amountText: event.target.value,
+                        amountCents: centsFromCurrency(event.target.value),
+                      })
                     }
                     disabled={isSubmitting}
                     className="mt-2 h-10 w-full border-b border-border bg-transparent font-k2d text-lg text-foreground outline-none focus:border-(--green-1) disabled:cursor-not-allowed disabled:opacity-50"
@@ -269,9 +306,9 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={isSubmitting}
-                  className={cn("w-full justify-center", positions.length === 1 && "opacity-50")}
-                  onClick={() => removePosition(index)}
+                  disabled={isSubmitting || positions.length === 1}
+                  className="w-full justify-center"
+                  onClick={() => removePosition(position.rowKey)}
                 >
                   Remover
                 </Button>

@@ -43,21 +43,57 @@ export function profileNotFound(): NextResponse {
 
 type ParseResult<T> = { ok: true; data: T } | { ok: false; response: NextResponse };
 
-/** Lê o JSON do corpo e valida com Zod (400 se JSON inválido ou dados inválidos). */
-export async function parseJsonBody<S extends z.ZodType>(
+/**
+ * Teto do corpo das requisições JSON. O maior corpo legítimo (check-in com o
+ * máximo de posições) fica em torno de 20 KB.
+ */
+export const MAX_JSON_BODY_BYTES = 100_000;
+
+function bodyTooLarge(): NextResponse {
+  return jsonError(413, "Corpo da requisição grande demais.");
+}
+
+/** Lê o corpo como JSON, recusando corpos acima de MAX_JSON_BODY_BYTES (413). */
+export async function readJsonBody(
   request: NextRequest,
-  schema: S,
-  invalidMessage: string,
-): Promise<ParseResult<z.output<S>>> {
-  let body: unknown;
+): Promise<{ ok: true; body: unknown } | { ok: false; response: NextResponse }> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_JSON_BODY_BYTES) {
+    return { ok: false, response: bodyTooLarge() };
+  }
+
+  let text: string;
   try {
-    body = await request.json();
+    text = await request.text();
   } catch {
     return {
       ok: false,
       response: jsonError(400, "Corpo da requisição deve ser um JSON válido."),
     };
   }
+  if (Buffer.byteLength(text, "utf8") > MAX_JSON_BODY_BYTES) {
+    return { ok: false, response: bodyTooLarge() };
+  }
+
+  try {
+    return { ok: true, body: JSON.parse(text) as unknown };
+  } catch {
+    return {
+      ok: false,
+      response: jsonError(400, "Corpo da requisição deve ser um JSON válido."),
+    };
+  }
+}
+
+/** Lê o JSON do corpo e valida com Zod (400 se JSON inválido ou dados inválidos). */
+export async function parseJsonBody<S extends z.ZodType>(
+  request: NextRequest,
+  schema: S,
+  invalidMessage: string,
+): Promise<ParseResult<z.output<S>>> {
+  const read = await readJsonBody(request);
+  if (!read.ok) return read;
+  const body = read.body;
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

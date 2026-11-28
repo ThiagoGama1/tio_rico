@@ -1,6 +1,7 @@
 import {
   ASSET_CLASS_LABELS,
   RISK_PROFILE_LABELS,
+  MAX_METAS,
   type AssetClass,
   type InvestorProfileInput,
   type MacroIndicators,
@@ -178,7 +179,8 @@ export function buildAdvisorUserPrompt(input: AdvisorContextInput): string {
   if (profile.goals.length === 0) {
     profileLines.push("  - Nenhuma meta específica cadastrada.");
   } else {
-    for (const goal of profile.goals) {
+    // Defensive cap (old rows may predate the schema limit).
+    for (const goal of profile.goals.slice(0, MAX_METAS)) {
       const details: string[] = [];
       if (typeof goal.targetAmountCents === "number") {
         details.push(`valor-alvo ${formatCentsBRL(goal.targetAmountCents)}`);

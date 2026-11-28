@@ -32,11 +32,15 @@ export function FormLogin() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEnteringDemo, setIsEnteringDemo] = useState(false);
+  // The demo error shares the error line but is not about the e-mail field.
+  const [demoFailed, setDemoFailed] = useState(false);
 
   async function sendCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setMessage("");
+    setDemoFailed(false);
     setIsSubmitting(true);
 
     try {
@@ -54,6 +58,27 @@ export function FormLogin() {
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function enterDemo() {
+    setError("");
+    setMessage("");
+    setDemoFailed(false);
+    setIsEnteringDemo(true);
+
+    try {
+      await requestJson("/api/session/demo", {});
+      router.push("/overview");
+      router.refresh();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Não foi possível entrar na conta de demonstração.",
+      );
+      setDemoFailed(true);
+      setIsEnteringDemo(false);
     }
   }
 
@@ -101,12 +126,30 @@ export function FormLogin() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             disabled={isSubmitting}
-            aria-invalid={Boolean(error)}
+            aria-invalid={Boolean(error) && !demoFailed}
           />
           <div className="grid justify-items-center gap-3">
-            <Button size="lg" type="submit" disabled={isSubmitting}>
+            <Button
+              className="w-62"
+              size="lg"
+              type="submit"
+              disabled={isSubmitting || isEnteringDemo}
+            >
               {isSubmitting ? "Enviando..." : "Gerar código de acesso"}
             </Button>
+            <Button
+              size="lg"
+              type="button"
+              className="w-62"
+              variant="secondary"
+              onClick={enterDemo}
+              disabled={isSubmitting || isEnteringDemo}
+            >
+              {isEnteringDemo ? "Entrando…" : "Entrar com conta de demonstração"}
+            </Button>
+            <p className="text-center font-k2d text-sm">
+              Explore o Tio Rico com uma carteira de exemplo, sem cadastro.
+            </p>
             <p aria-live="polite" className="text-center text-sm text-red-600">
               {error}
             </p>
@@ -116,6 +159,9 @@ export function FormLogin() {
         <form className="grid justify-items-center gap-5" onSubmit={verifyCode}>
           <p aria-live="polite" className="text-center text-sm text-(--green-2)">
             {message}
+          </p>
+          <p className="text-center font-k2d text-sm text-muted">
+            Não chegou? Confira o spam.
           </p>
           <Input
             variant="square"
