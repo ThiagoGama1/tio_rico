@@ -14,6 +14,8 @@ import {
   formatCentsBRL,
   type PortfolioEvolutionResult,
 } from "@/lib/history/evolution";
+import { formatarCentavosParaCampo, parseReaisParaCentavos } from "@/lib/format/moeda";
+import { projetarMeta, rotuloMes, type ProjecaoMeta } from "@/lib/goals/projecao";
 import type { InvestorGoal, InvestorProfile } from "@/lib/types/domain";
 
 type GoalsResponse = {
@@ -112,6 +114,57 @@ function goalDraftFrom(goal: InvestorGoal): GoalDraft {
   };
 }
 
+function currentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Último check-in da evolução (o de mês mais recente), se houver. */
+function latestMetric(evolution: PortfolioEvolutionResult) {
+  return evolution.periodMetrics.reduce<PortfolioEvolutionResult["periodMetrics"][number] | null>(
+    (latest, metric) => (!latest || metric.referenceMonth > latest.referenceMonth ? metric : latest),
+    null,
+  );
+}
+
+function projectionText(projection: ProjecaoMeta, contributionCents: number) {
+  if (projection.tipo === "nunca") return "Nesse ritmo a meta não é alcançada.";
+  if (projection.tipo === "depois_do_prazo") {
+    return `Nesse ritmo você chega em ${rotuloMes(projection.mes)}, depois do prazo (${rotuloMes(projection.prazo)}).`;
+  }
+  if (projection.tipo === "no_prazo") {
+    return `Aportando ${formatCentsBRL(contributionCents)} por mês, você chega lá em ${rotuloMes(projection.mes)}.`;
+  }
+  return null;
+}
+
+/**
+ * Taxa anual (%) da projeção: rendimento estimado pelo motor no último
+ * check-in; sem check-in (ou se a leitura falhar), o CDI atual.
+ */
+async function loadAnnualRatePct(checkInId: string | null, signal: AbortSignal) {
+  if (checkInId) {
+    try {
+      const response = await fetch(`/api/checkins/${encodeURIComponent(checkInId)}`, {
+        signal,
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { motorResult?: { rendimentoAnualPct?: unknown } | null }
+        | null;
+      const rate = payload?.motorResult?.rendimentoAnualPct;
+      if (response.ok && typeof rate === "number" && Number.isFinite(rate)) return rate;
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
+  }
+
+  const response = await fetch("/api/indicators", { signal });
+  const payload = (await response.json().catch(() => null)) as { cdiAnnual?: unknown } | null;
+  const cdi = payload?.cdiAnnual;
+  return response.ok && typeof cdi === "number" && Number.isFinite(cdi) ? cdi : null;
+}
+
 function GoalsShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh bg-[#faf9f7]">
@@ -205,6 +258,8 @@ export function Goals() {
   const [message, setMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+  const [annualRatePct, setAnnualRatePct] = useState<number | null>(null);
+  const [contributionText, setContributionText] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -240,6 +295,15 @@ export function Goals() {
 
         if (!controller.signal.aborted) {
           setState({ status: "ready", data: payload });
+          const latest = latestMetric(payload.evolution);
+          setContributionText(latest ? formatarCentavosParaCampo(latest.contributionCents) : "");
+          loadAnnualRatePct(latest?.checkInId ?? null, controller.signal)
+            .then((rate) => {
+              if (!controller.signal.aborted) setAnnualRatePct(rate);
+            })
+            .catch(() => {
+              // sem taxa, a tela só não mostra a projeção
+            });
         }
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -463,6 +527,25 @@ export function Goals() {
   }
 
   const { profile, evolution } = state.data;
+  const latest = latestMetric(evolution);
+  const contributionCents = parseReaisParaCentavos(contributionText) ?? 0;
+  const showProjection =
+    annualRatePct !== null && profile.goals.some((goal) => goal.targetAmountCents !== undefined);
+
+  function projectionFor(goal: InvestorGoal) {
+    if (annualRatePct === null || goal.targetAmountCents === undefined) return null;
+    return projectionText(
+      projetarMeta({
+        valorInicialCentavos: latest?.totalValueCents ?? 0,
+        aporteMensalCentavos: contributionCents,
+        taxaAnualPct: annualRatePct,
+        metaCentavos: goal.targetAmountCents,
+        mesBase: latest?.referenceMonth ?? currentMonth(),
+        prazo: goal.targetDate,
+      }),
+      contributionCents,
+    );
+  }
 
   return (
     <GoalsShell>
@@ -506,6 +589,23 @@ export function Goals() {
           </p>
         ) : null}
 
+        {showProjection ? (
+          <div className="mt-5 grid gap-2 sm:max-w-xs">
+            <FieldLabel htmlFor="goal-monthly-contribution">Aporte mensal</FieldLabel>
+            <input
+              id="goal-monthly-contribution"
+              inputMode="decimal"
+              value={contributionText}
+              onChange={(event) => setContributionText(event.target.value)}
+              placeholder="Ex.: 500,00"
+              className="h-11 rounded-md border border-border bg-transparent px-4 font-k2d text-base text-foreground outline-none transition placeholder:text-muted focus:border-(--green-1) focus:ring-2 focus:ring-(--green-1)/15"
+            />
+            <p className="font-k2d text-sm text-muted">
+              Estimativa com base no rendimento atual da carteira.
+            </p>
+          </div>
+        ) : null}
+
         <div className="mt-5 border-t border-border pt-3">
           {profile.goals.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-background px-6 py-10 text-center">
@@ -523,6 +623,7 @@ export function Goals() {
               {profile.goals.map((goal, index) => {
                 const progress = evolution.goalProgress[index];
                 const percentage = progress?.progressPct;
+                const projection = projectionFor(goal);
                 const detail = [
                   `Prioridade ${priorityLabel(goal.priority).toLowerCase()}`,
                   goal.targetAmountCents === undefined
@@ -596,6 +697,9 @@ export function Goals() {
                           </p>
                         </div>
                       )}
+                      {projection ? (
+                        <p className="mt-1 font-k2d text-sm text-muted">{projection}</p>
+                      ) : null}
                     </article>
                   </li>
                 );
