@@ -49,7 +49,6 @@ app/
       assets/             # CRUD completo de ativos da carteira do usuário autenticado
       evolution/          # Série histórica patrimonial, metas e aderência da sessão (GET)
     checkins/
-      analyze/            # Análise estruturada stateless com IA (POST)
       [id]/               # Detalhe de check-in isolado por perfil da sessão (GET)
       route.ts            # Listagem (GET) e orquestrador completo do check-in (POST)
     indicators/           # Indicadores BCB SGS com cache em memória e fallback (GET)
@@ -136,7 +135,6 @@ Para publicar na Vercel (PostgreSQL via Marketplace, variáveis de ambiente, Pre
 | `GET /api/portfolio/evolution` | Sessão obrigatória | Calcula série histórica patrimonial, deltas entre check-ins e aderência da sessão |
 | `GET/POST /api/checkins` | Sessão obrigatória | Lista histórico ou executa o check-in completo (BCB + histórico + motor + Firecrawl + LLM + PostgreSQL) |
 | `GET /api/checkins/[id]` | Sessão obrigatória | Retorna os detalhes de um check-in pertencente ao perfil da sessão (proteção contra IDOR) |
-| `POST /api/checkins/analyze` | Público (stateless) | Executa a análise estruturada com IA sem exigir banco configurado |
 | `GET /api/indicators` | Público | Busca Selic (`432`), CDI (`4389`/`12`) e IPCA (`433`/`13522`) no BCB SGS com cache e fallback (`?refresh=true`) |
 | `GET /api/health` | Público | Verifica conectividade com PostgreSQL (`SELECT 1`) e configuração de IA, Auth.js, Firecrawl e BCB (`?strict=true`) |
 

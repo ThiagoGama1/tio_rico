@@ -3,6 +3,7 @@ import {
   InvestorGoalSchema,
   InvestorPreferencesSchema,
   InvestorProfileInputSchema,
+  MAX_METAS,
   PortfolioPositionInputSchema,
   RiskProfileSchema,
   TargetAllocationSchema,
@@ -53,7 +54,7 @@ export const UpdateInvestorProfileRequestSchema = z
     riskProfile: RiskProfileSchema,
     horizonMonths: z.number().int().min(1).max(1200),
     monthlyIncomeCents: z.number().int().nonnegative().nullable(),
-    goals: z.array(InvestorGoalSchema),
+    goals: z.array(InvestorGoalSchema).max(MAX_METAS),
     targetAllocation: TargetAllocationSchema,
     preferences: InvestorPreferencesSchema.nullable(),
   })

@@ -159,3 +159,19 @@ model MacroSnapshot {
   @@index([fetchedAt])
   @@map("macro_snapshots")
 }
+
+// =============================================================================
+// Limite de requisições (login, envio de código, criação de demo).
+// Uma linha por chave (ex.: "login-falha:email", "envio-ip:1.2.3.4"); o
+// contador volta a 1 quando a janela vence. Linhas vencidas são apagadas pela
+// limpeza diária (/api/cron/limpar-demo).
+// =============================================================================
+
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
+  @@map("rate_limits")
+}
