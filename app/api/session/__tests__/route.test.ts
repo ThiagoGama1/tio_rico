@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSessionUser: vi.fn<() => Promise<SessionUser | null>>(),
   isDatabaseConfigured: vi.fn<() => boolean>(),
   getProfileIdForUser: vi.fn<(userId: string) => Promise<string | null>>(),
-  ensureDemoUser: vi.fn(),
+  demoDisponivel: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
   sendEmailLoginCode: vi.fn<(email: string) => Promise<void>>(),
@@ -43,7 +43,9 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 
 vi.mock("@/lib/auth/demo", () => ({
-  ensureDemoUser: mocks.ensureDemoUser,
+  demoDisponivel: mocks.demoDisponivel,
+  chaveDemosPorIp: (ip: string) => `demo-ip:${ip}`,
+  MAX_DEMOS_POR_IP: 10,
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -321,25 +323,30 @@ describe("POST /api/session/email/verify", () => {
 });
 
 describe("POST /api/session/demo", () => {
-  const DEMO_USER = {
-    id: "user-demo",
-    email: "marina.costa@demo.tiorico.app",
-    name: "Marina Costa (demonstração)",
-  };
+  function demoRequest(ip = "203.0.113.9"): NextRequest {
+    return new NextRequest("http://localhost:3000/api/session/demo", {
+      method: "POST",
+      headers: { "x-forwarded-for": ip },
+    });
+  }
+
+  beforeEach(() => {
+    mocks.demoDisponivel.mockResolvedValue(true);
+  });
 
   it("returns 503 when database is not configured", async () => {
     mocks.isDatabaseConfigured.mockReturnValue(false);
 
-    const response = await POST_DEMO();
+    const response = await POST_DEMO(demoRequest());
 
     expect(response.status).toBe(503);
     expect(mocks.signIn).not.toHaveBeenCalled();
   });
 
   it("returns 503 when the seed has not been run", async () => {
-    mocks.ensureDemoUser.mockResolvedValue(null);
+    mocks.demoDisponivel.mockResolvedValue(false);
 
-    const response = await POST_DEMO();
+    const response = await POST_DEMO(demoRequest());
     const json = await response.json();
 
     expect(response.status).toBe(503);
@@ -347,19 +354,24 @@ describe("POST /api/session/demo", () => {
     expect(mocks.signIn).not.toHaveBeenCalled();
   });
 
-  it("signs in with the demo provider and returns the demo profile", async () => {
-    mocks.ensureDemoUser.mockResolvedValue(DEMO_USER);
+  it("returns 429 when this IP already created too many demo accounts", async () => {
+    mocks.limiteEsgotado.mockResolvedValue(true);
+
+    const response = await POST_DEMO(demoRequest("198.51.100.4"));
+
+    expect(response.status).toBe(429);
+    expect(mocks.limiteEsgotado).toHaveBeenCalledWith("demo-ip:198.51.100.4", 10);
+    expect(mocks.signIn).not.toHaveBeenCalled();
+  });
+
+  it("signs in with the demo provider, which creates a private copy", async () => {
     mocks.signIn.mockResolvedValue("http://localhost:3000/");
 
-    const response = await POST_DEMO();
+    const response = await POST_DEMO(demoRequest());
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json).toEqual({
-      authenticated: true,
-      user: DEMO_USER,
-      profileId: "demo-marina-costa",
-    });
+    expect(json).toEqual({ authenticated: true, demo: true });
     expect(mocks.signIn).toHaveBeenCalledWith("demo", {
       redirect: false,
       redirectTo: "/",
@@ -367,10 +379,9 @@ describe("POST /api/session/demo", () => {
   });
 
   it("returns 500 when Auth.js rejects the demo sign-in", async () => {
-    mocks.ensureDemoUser.mockResolvedValue(DEMO_USER);
     mocks.signIn.mockResolvedValue("http://localhost:3000/api/auth/error?error=CredentialsSignin");
 
-    const response = await POST_DEMO();
+    const response = await POST_DEMO(demoRequest());
 
     expect(response.status).toBe(500);
   });
