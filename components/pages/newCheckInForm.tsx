@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FUTURE_MONTH_MESSAGE, mesAtualReferencia, mesNoFuturo } from "@/lib/checkins/mes-referencia";
 import { parseReaisParaCentavos } from "@/lib/format/moeda";
 import {
   ASSET_CLASSES,
@@ -38,8 +39,7 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 });
 
 function currentReferenceMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return mesAtualReferencia();
 }
 
 function formatCents(value: number) {
@@ -76,6 +76,7 @@ function FieldLabel({ children, htmlFor }: { children: string; htmlFor: string }
 export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
   const router = useRouter();
   const [referenceMonth, setReferenceMonth] = useState(currentReferenceMonth);
+  const [maxReferenceMonth] = useState(currentReferenceMonth);
   const [contribution, setContribution] = useState("0");
   const nextRowNumber = useRef(0);
   const [positions, setPositions] = useState<PositionRow[]>(() =>
@@ -139,6 +140,10 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
           liquidity: position.liquidity,
         }),
       );
+    if (mesNoFuturo(referenceMonth)) {
+      setError(FUTURE_MONTH_MESSAGE);
+      return;
+    }
     if (validPositions.length === 0) {
       setError("Informe ao menos uma posição para registrar o check-in.");
       return;
@@ -187,6 +192,7 @@ export function NewCheckInForm({ initialPositions }: NewCheckInFormProps) {
             id="reference-month"
             type="month"
             value={referenceMonth}
+            max={maxReferenceMonth}
             onChange={(event) => setReferenceMonth(event.target.value)}
             disabled={isSubmitting}
             className="mt-3 h-10 w-full bg-transparent font-k2d text-lg text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50"

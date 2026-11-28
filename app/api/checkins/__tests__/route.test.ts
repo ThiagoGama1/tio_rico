@@ -492,6 +492,49 @@ describe("POST /api/checkins", () => {
     expect(json.details).toBeDefined();
   });
 
+  it("returns 400 with a clear message when the reference month is after the current month", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-15T12:00:00-03:00"));
+    try {
+      const response = await POST(
+        makeJsonPostRequest({
+          referenceMonth: "2026-12",
+          contributionCents: 0,
+          positions: [{ name: "Tesouro Selic", assetClass: "renda_fixa_pos", amountCents: 100_000 }],
+        }),
+      );
+      const json = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(json.error).toBe("O mês de referência não pode ser depois do mês atual.");
+      expect(mocks.saveCheckIn).not.toHaveBeenCalled();
+      expect(mocks.gerarDiagnostico).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("accepts the current month and uses Brasília time at the turn of the month", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 30/11 às 22h em Brasília já é 01/12 em UTC
+    vi.setSystemTime(new Date("2026-12-01T01:00:00Z"));
+    try {
+      const futuro = await POST(
+        makeJsonPostRequest({ referenceMonth: "2026-12", contributionCents: 0 }),
+      );
+      expect(futuro.status).toBe(400);
+
+      mocks.isDatabaseConfigured.mockReturnValue(false);
+      const atual = await POST(
+        makeJsonPostRequest({ referenceMonth: "2026-11", contributionCents: 0 }),
+      );
+      // passou da validação do mês e parou na checagem seguinte (banco)
+      expect(atual.status).toBe(503);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("ignores client-supplied profileId in body and scopes check-in to session profile", async () => {
     const response = await POST(
       makeJsonPostRequest({
