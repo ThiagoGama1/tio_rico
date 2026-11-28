@@ -14,6 +14,7 @@ import {
   unauthorized,
 } from "@/lib/api/responses";
 import { getSessionUser } from "@/lib/auth/session";
+import { FUTURE_MONTH_MESSAGE, mesNoFuturo } from "@/lib/checkins/mes-referencia";
 import { isDatabaseConfigured } from "@/lib/db/prisma";
 import { computePortfolioEvolution } from "@/lib/history/evolution";
 import {
@@ -129,6 +130,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return jsonError(400, "Dados inválidos para criação do check-in.", {
       details: z.flattenError(parsed.error),
     });
+  }
+
+  if (mesNoFuturo(parsed.data.referenceMonth)) {
+    return jsonError(400, FUTURE_MONTH_MESSAGE);
   }
 
   if (!isDatabaseConfigured()) {
