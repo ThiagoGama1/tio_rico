@@ -137,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!isDatabaseConfigured()) {
     return jsonError(
       503,
-      "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins ou utilize POST /api/checkins/analyze para análise stateless sem persistência.",
+      "Banco de dados não configurado. Defina DATABASE_URL para salvar check-ins.",
     );
   }
 
