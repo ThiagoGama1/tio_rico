@@ -327,7 +327,6 @@ export function Overview() {
               label: ASSET_CLASS_LABELS[item.assetClass],
               current: item.currentPct,
               target: profile.targetAllocation[item.assetClass] ?? 0,
-              delta: item.deltaPct,
             }))}
           />
           <ReferenceIndicators indicators={indicators} />
@@ -340,8 +339,10 @@ export function Overview() {
 function ClassReading({
   items,
 }: {
-  items: Array<{ label: string; current: number; target: number; delta: number }>;
+  items: Array<{ label: string; current: number; target: number }>;
 }) {
+  // O número ao lado de "Atual · Alvo" é o desvio frente ao alvo (atual − alvo),
+  // e não a variação desde o mês anterior (#67).
   return (
     <Card className="p-6">
       <h2 className="font-k2d text-2xl font-semibold text-foreground">
@@ -358,8 +359,8 @@ function ClassReading({
               key={item.label}
               variant="compact"
               title={item.label}
-              detail={`Atual ${percentage(item.current)} · Alvo ${percentage(item.target)}`}
-              value={formatSignedPpBR(item.delta)}
+              detail={`Atual ${percentage(item.current)} · Alvo ${percentage(item.target)} · desvio do alvo`}
+              value={formatSignedPpBR(item.current - item.target)}
             />
           ))}
         </div>
